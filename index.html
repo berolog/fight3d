@@ -2,15 +2,15 @@
 <html lang="ru">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>Fight3D</title>
 <style>
   * { box-sizing: border-box; }
   html, body { margin: 0; height: 100%; overflow: hidden; background: #101418; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: #fff; }
   #app canvas { display: block; }
   .hidden { display: none !important; }
-  #menu { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: linear-gradient(90deg, rgba(10,14,20,.85), rgba(10,14,20,.35)); }
-  .panel { width: min(460px, 92vw); padding: 28px; background: rgba(15,20,28,.82); border: 1px solid rgba(255,255,255,.12); border-radius: 14px; backdrop-filter: blur(6px); }
+  #menu { position: fixed; inset: 0; display: flex; overflow-y: auto; padding: 12px; background: linear-gradient(90deg, rgba(10,14,20,.85), rgba(10,14,20,.35)); }
+  .panel { margin: auto; width: min(460px, 100%); padding: 28px; background: rgba(15,20,28,.82); border: 1px solid rgba(255,255,255,.12); border-radius: 14px; backdrop-filter: blur(6px); }
   h1 { margin: 0 0 4px; font-size: 40px; letter-spacing: 2px; font-weight: 900; font-style: italic; }
   h1 span { color: #e04848; }
   .sub { opacity: .7; margin-bottom: 20px; }
@@ -40,8 +40,22 @@
   .p0 .hp { background: linear-gradient(#ff6b6b, #c62828); } .p1 .hp { background: linear-gradient(#64a0ff, #1e4fb8); }
   .p1 .name { flex-direction: row-reverse; }
   .swap .p0 .hp { background: linear-gradient(#64a0ff, #1e4fb8); } .swap .p1 .hp { background: linear-gradient(#ff6b6b, #c62828); }
-  #big { position: absolute; top: 30%; width: 100%; text-align: center; font-size: 84px; font-weight: 900; font-style: italic; text-shadow: 0 4px 0 #000, 0 0 30px rgba(0,0,0,.6); }
-  #big small { display: block; font-size: 32px; }
+  #big { position: absolute; top: 26%; width: 100%; text-align: center; font-size: clamp(40px, 10vw, 84px); font-weight: 900; font-style: italic; text-shadow: 0 4px 0 #000, 0 0 30px rgba(0,0,0,.6); }
+  #big small { display: block; font-size: clamp(20px, 4vw, 32px); }
+  #hurt { position: absolute; inset: 0; opacity: 0; background: radial-gradient(ellipse at center, transparent 45%, rgba(200,0,0,.65) 100%); }
+  .touchon .help { display: none; }
+  .chk { display: flex; align-items: center; gap: 8px; margin-top: 14px; font-size: 14px; cursor: pointer; }
+  .chk input { flex: 0 0 auto; width: 18px; height: 18px; }
+  #touch { position: fixed; inset: 0; pointer-events: none; user-select: none; -webkit-user-select: none; touch-action: none; }
+  #touch > * { pointer-events: auto; touch-action: none; }
+  #stick { position: absolute; left: max(24px, env(safe-area-inset-left)); bottom: 28px; width: 150px; height: 150px; border-radius: 50%; background: rgba(255,255,255,.12); border: 2px solid rgba(255,255,255,.35); }
+  #knob { position: absolute; left: 45px; top: 45px; width: 60px; height: 60px; border-radius: 50%; background: rgba(255,255,255,.45); pointer-events: none; }
+  #tbtns { position: absolute; right: max(16px, env(safe-area-inset-right)); bottom: 20px; display: grid; grid-template-columns: repeat(2, 76px); gap: 10px; }
+  #tbtns button { height: 56px; padding: 0; font-size: 13px; border-radius: 14px; background: rgba(224,72,72,.55); border: 2px solid rgba(255,255,255,.4); touch-action: none; }
+  #tbtns button[data-p^="d"] { height: 40px; background: rgba(255,255,255,.18); }
+  #tbtns button[data-h] { background: rgba(47,110,224,.55); }
+  #tbtns button.on { filter: brightness(1.6); transform: scale(.95); }
+  #tmenu { position: absolute; top: 60px; left: 50%; transform: translateX(-50%); width: 44px; height: 36px; padding: 0; flex: none; background: rgba(0,0,0,.4); }
   .help { position: absolute; bottom: 10px; width: 100%; text-align: center; font-size: 13px; opacity: .75; text-shadow: 0 1px 2px #000; }
 </style>
 <script type="importmap">{ "imports": { "three": "./lib/three.module.min.js" } }</script>
@@ -71,15 +85,18 @@
     <div class="row" style="margin-top:8px"><input id="joinCode" placeholder="КОД" maxlength="5"><button id="joinBtn" class="ghost">Войти</button></div>
     <div id="netStatus"></div>
 
+    <label class="chk"><input type="checkbox" id="touchChk"> Сенсорное управление (телефон, планшет)</label>
+
     <h2>Управление</h2>
     <div class="keys">
-      <span><kbd>A</kbd> <kbd>D</kbd></span><span>назад / вперёд</span>
-      <span><kbd>W</kbd> <kbd>S</kbd></span><span>шаг в сторону (обход)</span>
+      <span><kbd>W</kbd> <kbd>S</kbd></span><span>вперёд / назад</span>
+      <span><kbd>A</kbd> <kbd>D</kbd></span><span>шаг влево / вправо (обход)</span>
       <span><kbd>J</kbd> <kbd>K</kbd></span><span>удар левой / правой рукой</span>
       <span><kbd>U</kbd> <kbd>I</kbd></span><span>удар левой / правой ногой</span>
       <span><kbd>Пробел</kbd></span><span>блок (держать)</span>
       <span><kbd>C</kbd> / <kbd>Shift</kbd></span><span>присесть (держать)</span>
       <span><kbd>Q</kbd> <kbd>E</kbd></span><span>уклон влево / вправо</span>
+      <span><kbd>V</kbd></span><span>вид от первого лица / сбоку</span>
       <span><kbd>Esc</kbd></span><span>выход в меню</span>
     </div>
   </div>
@@ -90,8 +107,20 @@
     <div class="bar p0"><div class="name"><span id="n0">P1</span><span class="sc" id="sc0"></span></div><div class="track"><div class="lag" id="lag0"></div><div class="hp" id="hp0"></div></div></div>
     <div class="bar p1"><div class="name"><span id="n1">P2</span><span class="sc" id="sc1"></span></div><div class="track"><div class="lag" id="lag1"></div><div class="hp" id="hp1"></div></div></div>
   </div>
+  <div id="hurt"></div>
   <div id="big"></div>
-  <div class="help">A/D ходьба · W/S обход · J/K руки · U/I ноги · Пробел блок · C присесть · Q/E уклон · Esc меню</div>
+  <div class="help" id="help"></div>
+</div>
+
+<div id="touch" class="hidden">
+  <div id="stick"><div id="knob"></div></div>
+  <div id="tbtns">
+    <button data-p="dl">⟵ уклон</button><button data-p="dr">уклон ⟶</button>
+    <button data-p="lp">Л. рука</button><button data-p="rp">П. рука</button>
+    <button data-p="lk">Л. нога</button><button data-p="rk">П. нога</button>
+    <button data-h="block">Блок</button><button data-h="crouch">Присед</button>
+  </div>
+  <button id="tmenu">☰</button>
 </div>
 
 <script type="module" src="./src/main.js"></script>

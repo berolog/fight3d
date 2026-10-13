@@ -16,7 +16,7 @@ document.getElementById('app').appendChild(renderer.domElement);
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x9fc3e6);
 scene.fog = new THREE.Fog(0x9fc3e6, 18, 45);
-const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 100);
+const camera = new THREE.PerspectiveCamera(40, 1, 0.03, 100);
 camera.position.set(0, 2, 6);
 
 scene.add(new THREE.HemisphereLight(0xdfefff, 0x6a5a48, 1.1));
@@ -86,6 +86,7 @@ function handleEvents(evs) {
   for (const e of evs) {
     if (e.t === 'hit') {
       burst(e.p, e.h, false); sfx.hit(e.h, e.c);
+      if (mode !== 'menu' && e.i === localIdx) hurtFlash(e.h);
       shake = Math.max(shake, e.h ? 0.22 : 0.08);
       if (e.c) flashText('КОНТР-УДАР!', 600);
     } else if (e.t === 'blk') { burst(e.p, false, true); sfx.block(); shake = Math.max(shake, 0.03); }
@@ -104,6 +105,7 @@ const PRESS = { KeyJ: 'lp', KeyK: 'rp', KeyU: 'lk', KeyI: 'rk', KeyQ: 'dl', KeyE
 addEventListener('keydown', (e) => {
   if (e.target.tagName === 'INPUT') return;
   if (e.code === 'Escape') { toMenu(); return; }
+  if (e.code === 'KeyV' && !e.repeat) { setView(view === 'fp' ? 'tp' : 'fp'); return; }
   if (!e.repeat && PRESS[e.code]) pressed[PRESS[e.code]] = 1;
   held.add(e.code);
   if (mode !== 'menu' && (e.code === 'Space' || e.code.startsWith('Arrow'))) e.preventDefault();
@@ -111,13 +113,55 @@ addEventListener('keydown', (e) => {
 addEventListener('keyup', (e) => held.delete(e.code));
 addEventListener('blur', () => held.clear());
 const H = (...c) => c.some(k => held.has(k));
+
+// ---------------------------------------------------------------------------
+// Touch controls: stick on the left, buttons on the right
+// ---------------------------------------------------------------------------
+const touch = { x: 0, y: 0, block: false, crouch: false };
+(function setupTouch() {
+  const stick = document.getElementById('stick'), knob = document.getElementById('knob');
+  let sid = null, cx = 0, cy = 0;
+  const R = 55;
+  const move = (e) => {
+    let dx = e.clientX - cx, dy = e.clientY - cy;
+    const l = Math.hypot(dx, dy);
+    if (l > R) { dx *= R / l; dy *= R / l; }
+    knob.style.transform = `translate(${dx}px, ${dy}px)`;
+    touch.x = Math.abs(dx) > R * 0.35 ? Math.sign(dx) : 0;
+    touch.y = Math.abs(dy) > R * 0.35 ? -Math.sign(dy) : 0;
+  };
+  stick.addEventListener('pointerdown', (e) => {
+    e.preventDefault(); sid = e.pointerId; stick.setPointerCapture(sid);
+    const r = stick.getBoundingClientRect(); cx = r.left + r.width / 2; cy = r.top + r.height / 2;
+    move(e);
+  });
+  stick.addEventListener('pointermove', (e) => { if (e.pointerId === sid) move(e); });
+  const end = (e) => { if (e.pointerId !== sid) return; sid = null; touch.x = touch.y = 0; knob.style.transform = ''; };
+  stick.addEventListener('pointerup', end); stick.addEventListener('pointercancel', end);
+
+  document.querySelectorAll('#touch [data-p], #touch [data-h]').forEach((b) => {
+    const down = (e) => {
+      e.preventDefault(); b.classList.add('on');
+      if (b.dataset.p) pressed[b.dataset.p] = 1; else touch[b.dataset.h] = true;
+    };
+    const up = () => { b.classList.remove('on'); if (b.dataset.h) touch[b.dataset.h] = false; };
+    b.addEventListener('pointerdown', down);
+    b.addEventListener('pointerup', up); b.addEventListener('pointercancel', up); b.addEventListener('pointerleave', up);
+  });
+  document.getElementById('tmenu').addEventListener('click', () => toMenu());
+  document.getElementById('touchChk').checked = matchMedia('(pointer: coarse)').matches;
+})();
 function localInput() {
-  // Local player always stands on the left of the screen facing right.
+  // x/y: screen-style axes (right / up) from keyboard or the touch stick
+  const x = Math.max(-1, Math.min(1, (H('KeyD', 'ArrowRight') ? 1 : 0) - (H('KeyA', 'ArrowLeft') ? 1 : 0) + touch.x));
+  const y = Math.max(-1, Math.min(1, (H('KeyW', 'ArrowUp') ? 1 : 0) - (H('KeyS', 'ArrowDown') ? 1 : 0) + touch.y));
+  // First person: up = forward, right = strafe right.
+  // Side view: the local player stands on the left facing right, up = step into the screen.
   const inp = {
-    mf: (H('KeyD', 'ArrowRight') ? 1 : 0) - (H('KeyA', 'ArrowLeft') ? 1 : 0),
-    ms: (H('KeyW', 'ArrowUp') ? 1 : 0) - (H('KeyS', 'ArrowDown') ? 1 : 0),
-    block: H('Space', 'KeyL'),
-    crouch: H('KeyC', 'ControlLeft', 'ShiftLeft'),
+    mf: view === 'fp' ? y : x,
+    ms: view === 'fp' ? -x : y,
+    block: H('Space', 'KeyL') || touch.block,
+    crouch: H('KeyC', 'ControlLeft', 'ShiftLeft') || touch.crouch,
     press: pressed,
   };
   pressed = {};
@@ -132,6 +176,13 @@ let peer = null, conn = null, remoteInp = { press: {} }, lastSnap = null;
 const $ = (id) => document.getElementById(id);
 
 function show(id) {
+  const t = id === 'hud' && $('touchChk').checked;
+  $('touch').classList.toggle('hidden', !t);
+  $('hud').classList.toggle('touchon', t);
+  if (id === 'hud') setView(view);
+  if (t && !document.fullscreenElement) {
+    document.documentElement.requestFullscreen?.().then(() => screen.orientation?.lock?.('landscape')).catch(() => {});
+  }
   $('hud').classList.toggle('swap', localIdx === 1);
   for (const s of ['menu', 'hud']) $(s).classList.toggle('hidden', s !== id);
 }
@@ -259,7 +310,54 @@ function updateHud(dt) {
 // ---------------------------------------------------------------------------
 const camPos = new THREE.Vector3(0, 2, 6), camLook = new THREE.Vector3(0, 1, 0);
 const _m = new THREE.Vector3(), _d = new THREE.Vector3(), _f = new THREE.Vector3(), _t = new THREE.Vector3();
+// First person: eyes of the local fighter, looking at the opponent's head.
+// Hit reactions (head snap, body lean) shake the view; a knockdown takes the view down with the body.
+const _eye = new THREE.Vector3(), _tg = new THREE.Vector3(), fpLook = new THREE.Vector3();
+const _q1 = new THREE.Quaternion(), _q2 = new THREE.Quaternion(), _mx = new THREE.Matrix4();
+const FLIP = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI);
+const UP = new THREE.Vector3(0, 1, 0);
+let fpInit = false;
+function updateFPCamera(dt) {
+  const me = fighters[localIdx], op = fighters[1 - localIdx], s = me.st;
+  me.head.localToWorld(_eye.set(0, 0.17, -0.06));
+  op.head.localToWorld(_tg.set(0, 0.06, 0));
+  if (!fpInit) { fpLook.copy(_tg); fpInit = true; }
+  fpLook.lerp(_tg, 1 - Math.exp(-dt * 12));
+  _mx.lookAt(_eye, fpLook, UP);
+  _q1.setFromRotationMatrix(_mx);
+  me.head.getWorldQuaternion(_q2).multiply(FLIP);
+  const w = Math.min(1, Math.max(0, -(me.pose.tilt || 0) / 1.1));
+  camera.position.copy(_eye);
+  camera.quaternion.copy(_q1).slerp(_q2, w);
+  camera.rotateX(-s.hd[0] * 0.7 - s.ln[0] * 0.4);
+  camera.rotateY(s.hd[1] * 0.7);
+  camera.rotateZ(-s.ln[1] * 0.8);
+  if (shake > 0) {
+    camera.rotateX((Math.random() - 0.5) * shake * 0.3);
+    camera.rotateY((Math.random() - 0.5) * shake * 0.3);
+    shake = Math.max(0, shake - dt * 1.2);
+  }
+  _m.set((me.rx + op.rx) / 2, 1, (me.rz + op.rz) / 2);
+  sun.position.set(_m.x + 4, 9, _m.z + 5); sun.target.position.copy(_m);
+}
+
+let view = 'fp';
+function setView(v) {
+  view = v; fpInit = false;
+  camera.fov = v === 'fp' ? 72 : 40; camera.updateProjectionMatrix();
+  fighters.forEach((f, i) => f.setFirstPerson(v === 'fp' && i === localIdx && mode !== 'menu'));
+  $('help').textContent = v === 'fp'
+    ? 'W/S вперёд-назад · A/D в сторону · J/K руки · U/I ноги · Пробел блок · C присесть · Q/E уклон · V вид · Esc меню'
+    : 'A/D назад-вперёд · W/S обход · J/K руки · U/I ноги · Пробел блок · C присесть · Q/E уклон · V вид · Esc меню';
+}
+
+let hurtT = 0;
+function hurtFlash(heavy) { hurtT = heavy ? 1 : 0.6; }
+
 function updateCamera(dt) {
+  hurtT = Math.max(0, hurtT - dt * 2.5);
+  $('hurt').style.opacity = hurtT;
+  if (view === 'fp') return updateFPCamera(dt);
   const me = fighters[localIdx], op = fighters[1 - localIdx];
   _m.set((me.rx + op.rx) / 2, 0, (me.rz + op.rz) / 2);
   _d.set(op.rx - me.rx, 0, op.rz - me.rz);
@@ -326,6 +424,7 @@ function frame(now) {
     camera.position.set(Math.sin(menuT * 0.15) * 5.5, 2.2, Math.cos(menuT * 0.15) * 5.5);
     camera.lookAt(0, 1.1, 0);
   } else { updateCamera(dt); updateHud(dt); }
+  if (mode === 'menu' && camera.fov !== 40) { camera.fov = 40; camera.updateProjectionMatrix(); fighters.forEach(f => f.setFirstPerson(false)); }
   renderer.render(scene, camera);
 }
 

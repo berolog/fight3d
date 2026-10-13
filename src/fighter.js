@@ -30,7 +30,7 @@ function delta(over) {
 }
 
 const D_CROUCH = delta({ py: 0.52, pp: 0.25, cx: 0.35, hx: -0.4, lf: [0.18, 0.08, 0.2], rf: [-0.18, 0.08, -0.2], lh: [0.13, 0.3, 0.28], rh: [-0.13, 0.28, 0.24] });
-const D_BLOCK = delta({ cx: 0.22, hx: 0.15, lh: [0.09, 0.5, 0.2], rh: [-0.09, 0.5, 0.2], py: 0.9 });
+const D_BLOCK = delta({ cx: 0.22, hx: 0.15, lh: [0.11, 0.44, 0.3], rh: [-0.11, 0.44, 0.3], py: 0.9 });
 
 function mkKeys(list) { return list.map(([t, o]) => ({ t, d: delta(o) })); }
 
@@ -137,12 +137,11 @@ export class Fighter {
     this.arms = {};
     for (const [k, s] of [['l', 1], ['r', -1]]) {
       const up = G(); up.position.set(0.25 * s, 0.28, 0); this.chest.add(up);
-      mesh(new THREE.SphereGeometry(0.075, 10, 8), skin, up);
-      mesh(cap(0.055, 0.22), skin, up, 0, -0.15, 0);
+      const sh = [mesh(new THREE.SphereGeometry(0.075, 10, 8), skin, up), mesh(cap(0.055, 0.22), skin, up, 0, -0.15, 0)];
       const lo = G(); lo.position.set(0, -0.3, 0); up.add(lo);
       mesh(cap(0.048, 0.2), skin, lo, 0, -0.13, 0);
       const fist = mesh(new THREE.SphereGeometry(0.085, 12, 10), glove, lo, 0, -0.32, 0);
-      this.arms[k] = { up, lo, fist, s };
+      this.arms[k] = { up, lo, fist, s, sh };
     }
     this.legs = {};
     for (const [k, s] of [['l', 1], ['r', -1]]) {
@@ -372,7 +371,11 @@ export class Fighter {
     return this._hz;
   }
 
-  setVisible(v) { this.root.visible = v; }
+  // hide what would clip into the camera when viewed from this fighter's eyes
+  setFirstPerson(on) {
+    this.head.visible = !on;
+    for (const k of ['l', 'r']) for (const m of this.arms[k].sh) m.visible = !on;
+  }
 }
 
 // Two-bone IK in world space. upper/lower are groups whose rest direction is -Y.

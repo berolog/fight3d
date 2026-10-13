@@ -115,7 +115,7 @@ export class Game {
       def.startAct('hit', a.stun);
     }
     this.hitstop = heavy ? 0.13 : 0.06;
-    this.event({ t: 'hit', p: pos, h: heavy ? 1 : 0, c: counter ? 1 : 0, z: zone, d: Math.round(dmg) });
+    this.event({ t: 'hit', i: this.idx(def), p: pos, h: heavy ? 1 : 0, c: counter ? 1 : 0, z: zone, d: Math.round(dmg) });
   }
 
   snapshot() {
