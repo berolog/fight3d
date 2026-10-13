@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fight3D</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #101418; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: #fff; }
+  #app canvas { display: block; }
+  .hidden { display: none !important; }
+  #menu { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: linear-gradient(90deg, rgba(10,14,20,.85), rgba(10,14,20,.35)); }
+  .panel { width: min(460px, 92vw); padding: 28px; background: rgba(15,20,28,.82); border: 1px solid rgba(255,255,255,.12); border-radius: 14px; backdrop-filter: blur(6px); }
+  h1 { margin: 0 0 4px; font-size: 40px; letter-spacing: 2px; font-weight: 900; font-style: italic; }
+  h1 span { color: #e04848; }
+  .sub { opacity: .7; margin-bottom: 20px; }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 1.5px; opacity: .6; margin: 18px 0 8px; }
+  .row { display: flex; gap: 8px; }
+  button, input { font: inherit; border-radius: 8px; border: 0; padding: 10px 14px; }
+  button { background: #e04848; color: #fff; font-weight: 700; cursor: pointer; flex: 1; }
+  button:hover { filter: brightness(1.12); }
+  button.alt { background: #2f6ee0; }
+  button.ghost { background: rgba(255,255,255,.12); flex: 0 0 auto; }
+  input { background: rgba(255,255,255,.1); color: #fff; flex: 1; text-transform: uppercase; letter-spacing: 3px; min-width: 0; }
+  #roomBox { margin-top: 10px; padding: 12px; background: rgba(255,255,255,.06); border-radius: 8px; }
+  #roomCode { font-size: 32px; font-weight: 900; letter-spacing: 6px; color: #ffd166; }
+  #roomLink { text-transform: none; letter-spacing: 0; font-size: 12px; }
+  #netStatus { min-height: 20px; margin-top: 8px; font-size: 14px; color: #ffd166; }
+  .keys { font-size: 13px; line-height: 1.7; opacity: .85; display: grid; grid-template-columns: auto 1fr; gap: 0 12px; }
+  kbd { background: rgba(255,255,255,.14); border-radius: 4px; padding: 1px 6px; font-family: inherit; font-size: 12px; white-space: nowrap; }
+  #hud { position: fixed; inset: 0; pointer-events: none; }
+  .bars { position: absolute; top: 16px; left: 16px; right: 16px; display: flex; gap: 40px; }
+  .bar { flex: 1; }
+  .bar .name { font-weight: 800; font-size: 18px; text-shadow: 0 2px 4px #000; display: flex; justify-content: space-between; }
+  .bar .sc { color: #ffd166; letter-spacing: 3px; }
+  .track { position: relative; height: 18px; background: rgba(0,0,0,.55); border: 2px solid rgba(255,255,255,.8); border-radius: 4px; overflow: hidden; margin-top: 4px; }
+  .track div { position: absolute; top: 0; bottom: 0; }
+  .lag { background: #fff; opacity: .7; }
+  .p0 .lag, .p0 .hp { left: 0; } .p1 .lag, .p1 .hp { right: 0; }
+  .p0 .hp { background: linear-gradient(#ff6b6b, #c62828); } .p1 .hp { background: linear-gradient(#64a0ff, #1e4fb8); }
+  .p1 .name { flex-direction: row-reverse; }
+  .swap .p0 .hp { background: linear-gradient(#64a0ff, #1e4fb8); } .swap .p1 .hp { background: linear-gradient(#ff6b6b, #c62828); }
+  #big { position: absolute; top: 30%; width: 100%; text-align: center; font-size: 84px; font-weight: 900; font-style: italic; text-shadow: 0 4px 0 #000, 0 0 30px rgba(0,0,0,.6); }
+  #big small { display: block; font-size: 32px; }
+  .help { position: absolute; bottom: 10px; width: 100%; text-align: center; font-size: 13px; opacity: .75; text-shadow: 0 1px 2px #000; }
+</style>
+<script type="importmap">{ "imports": { "three": "./lib/three.module.min.js" } }</script>
+<script src="./lib/peerjs.min.js"></script>
+</head>
+<body>
+<div id="app"></div>
+
+<div id="menu">
+  <div class="panel">
+    <h1>FIGHT<span>3D</span></h1>
+    <div class="sub">Простой 3D-файтинг на двоих</div>
+
+    <h2>Против компьютера</h2>
+    <div class="row">
+      <button data-ai="easy" class="ghost" style="flex:1">Лёгкий</button>
+      <button data-ai="normal" style="flex:1">Нормальный</button>
+      <button data-ai="hard" class="ghost" style="flex:1">Сложный</button>
+    </div>
+
+    <h2>Онлайн с другом</h2>
+    <div class="row"><button id="hostBtn" class="alt">Создать комнату</button></div>
+    <div id="roomBox" class="hidden">
+      Код комнаты: <span id="roomCode"></span>
+      <div class="row" style="margin-top:6px"><input id="roomLink" readonly><button id="copyBtn" class="ghost">Копировать</button></div>
+    </div>
+    <div class="row" style="margin-top:8px"><input id="joinCode" placeholder="КОД" maxlength="5"><button id="joinBtn" class="ghost">Войти</button></div>
+    <div id="netStatus"></div>
+
+    <h2>Управление</h2>
+    <div class="keys">
+      <span><kbd>A</kbd> <kbd>D</kbd></span><span>назад / вперёд</span>
+      <span><kbd>W</kbd> <kbd>S</kbd></span><span>шаг в сторону (обход)</span>
+      <span><kbd>J</kbd> <kbd>K</kbd></span><span>удар левой / правой рукой</span>
+      <span><kbd>U</kbd> <kbd>I</kbd></span><span>удар левой / правой ногой</span>
+      <span><kbd>Пробел</kbd></span><span>блок (держать)</span>
+      <span><kbd>C</kbd> / <kbd>Shift</kbd></span><span>присесть (держать)</span>
+      <span><kbd>Q</kbd> <kbd>E</kbd></span><span>уклон влево / вправо</span>
+      <span><kbd>Esc</kbd></span><span>выход в меню</span>
+    </div>
+  </div>
+</div>
+
+<div id="hud" class="hidden">
+  <div class="bars">
+    <div class="bar p0"><div class="name"><span id="n0">P1</span><span class="sc" id="sc0"></span></div><div class="track"><div class="lag" id="lag0"></div><div class="hp" id="hp0"></div></div></div>
+    <div class="bar p1"><div class="name"><span id="n1">P2</span><span class="sc" id="sc1"></span></div><div class="track"><div class="lag" id="lag1"></div><div class="hp" id="hp1"></div></div></div>
+  </div>
+  <div id="big"></div>
+  <div class="help">A/D ходьба · W/S обход · J/K руки · U/I ноги · Пробел блок · C присесть · Q/E уклон · Esc меню</div>
+</div>
+
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>
