@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { ACTS } from './fighter.js';
+import { ACTS } from './fighter.js?v=3';
 
 const START_X = 1.4;
 
