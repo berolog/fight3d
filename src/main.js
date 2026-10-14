@@ -1,8 +1,8 @@
 import * as THREE from 'three';
-import { Fighter, RING_R, RING_H } from './fighter.js?v=5';
-import { Game } from './game.js?v=5';
-import { AI } from './ai.js?v=5';
-import { Sfx } from './audio.js?v=5';
+import { Fighter, RING_R, RING_H } from './fighter.js?v=6';
+import { Game } from './game.js?v=6';
+import { AI } from './ai.js?v=6';
+import { Sfx } from './audio.js?v=6';
 
 // ---------------------------------------------------------------------------
 // Scene
@@ -95,7 +95,7 @@ function handleEvents(evs) {
       shake = Math.max(shake, e.s ? 0.4 : e.h ? 0.22 : 0.08);
       dmgNumber(e);
       if (e.cb >= 2) showCombo(1 - e.i, e.cb);
-      if (e.z === 'throw') flashText('БРОСОК!', 700);
+      if (e.gb) flashText('ПРОБИЛ БЛОК!', 700);
       else if (e.c) flashText('КОНТР-УДАР!', 600);
     } else if (e.t === 'blk') { burst(e.p, false, true); sfx.block(); shake = Math.max(shake, 0.03); }
     else if (e.t === 'sw') sfx.swoosh(e.k);
@@ -111,17 +111,35 @@ function handleEvents(evs) {
 // ---------------------------------------------------------------------------
 const held = new Set();
 let pressed = {};
-const PRESS = { KeyJ: 'lp', KeyK: 'rp', KeyL: 'th', KeyU: 'lk', KeyI: 'rk', KeyO: 'sp', KeyQ: 'dl', KeyE: 'dr', Numpad4: 'lp', Numpad5: 'rp', Numpad7: 'lk', Numpad8: 'rk' };
+const PRESS = { KeyU: 'lk', KeyI: 'rk', KeyO: 'sp', KeyQ: 'dl', KeyE: 'dr', Numpad7: 'lk', Numpad8: 'rk' };
+// Punch keys: a tap is a jab/cross, holding past HOOK_HOLD throws a hook.
+const CHARGE = { KeyJ: ['lp', 'hl'], KeyK: ['rp', 'hr'], Numpad4: ['lp', 'hl'], Numpad5: ['rp', 'hr'] };
+const HOOK_HOLD = 220;
+const charges = {};
+function chargeDown(id, pair) { if (!charges[id]) charges[id] = { t: performance.now(), pair, fired: false }; }
+function chargeUp(id) {
+  const c = charges[id];
+  if (c && !c.fired) pressed[c.pair[0]] = 1;
+  delete charges[id];
+}
+function pollCharges() {
+  const now = performance.now();
+  for (const id in charges) {
+    const c = charges[id];
+    if (!c.fired && now - c.t >= HOOK_HOLD) { pressed[c.pair[1]] = 1; c.fired = true; }
+  }
+}
 addEventListener('keydown', (e) => {
   if (e.target.tagName === 'INPUT') return;
   if (e.code === 'Escape') { toMenu(); return; }
   if (replay && !e.repeat) { endReplay(); return; }
   if (e.code === 'KeyV' && !e.repeat) { setView(view === 'fp' ? 'tp' : 'fp'); return; }
   if (!e.repeat && PRESS[e.code]) pressed[PRESS[e.code]] = 1;
+  if (!e.repeat && CHARGE[e.code]) chargeDown(e.code, CHARGE[e.code]);
   held.add(e.code);
   if (mode !== 'menu' && (e.code === 'Space' || e.code.startsWith('Arrow'))) e.preventDefault();
 });
-addEventListener('keyup', (e) => held.delete(e.code));
+addEventListener('keyup', (e) => { held.delete(e.code); if (CHARGE[e.code]) chargeUp(e.code); });
 addEventListener('blur', () => held.clear());
 const H = (...c) => c.some(k => held.has(k));
 
@@ -154,9 +172,15 @@ const touch = { x: 0, y: 0, block: false, crouch: false };
     const down = (e) => {
       e.preventDefault(); b.classList.add('on');
       if (replay) endReplay();
-      if (b.dataset.p) pressed[b.dataset.p] = 1; else touch[b.dataset.h] = true;
+      const p = b.dataset.p;
+      if (p === 'lp' || p === 'rp') chargeDown('t' + p, p === 'lp' ? ['lp', 'hl'] : ['rp', 'hr']);
+      else if (p) pressed[p] = 1; else touch[b.dataset.h] = true;
     };
-    const up = () => { b.classList.remove('on'); if (b.dataset.h) touch[b.dataset.h] = false; };
+    const up = () => {
+      b.classList.remove('on');
+      if (b.dataset.h) touch[b.dataset.h] = false;
+      if (b.dataset.p === 'lp' || b.dataset.p === 'rp') chargeUp('t' + b.dataset.p);
+    };
     b.addEventListener('pointerdown', down);
     b.addEventListener('pointerup', up); b.addEventListener('pointercancel', up); b.addEventListener('pointerleave', up);
   });
@@ -164,6 +188,7 @@ const touch = { x: 0, y: 0, block: false, crouch: false };
   document.getElementById('touchChk').checked = matchMedia('(pointer: coarse)').matches;
 })();
 function localInput() {
+  pollCharges();
   // x/y: screen-style axes (right / up) from keyboard or the touch stick
   const x = Math.max(-1, Math.min(1, (H('KeyD', 'ArrowRight') ? 1 : 0) - (H('KeyA', 'ArrowLeft') ? 1 : 0) + touch.x));
   const y = Math.max(-1, Math.min(1, (H('KeyW', 'ArrowUp') ? 1 : 0) - (H('KeyS', 'ArrowDown') ? 1 : 0) + touch.y));
@@ -470,8 +495,8 @@ function setView(v) {
   camera.fov = v === 'fp' ? 72 : 40; camera.updateProjectionMatrix();
   fighters.forEach((f, i) => f.setFirstPerson(v === 'fp' && i === localIdx && mode !== 'menu'));
   $('help').textContent = v === 'fp'
-    ? 'W/S вперёд-назад · A/D в сторону · J/K руки · L бросок · U/I ноги · O супер · Пробел блок · C присесть (+J/K апперкот) · Q/E уклон · V вид'
-    : 'A/D назад-вперёд · W/S обход · J/K руки · L бросок · U/I ноги · O супер · Пробел блок · C присесть (+J/K апперкот) · Q/E уклон · V вид';
+    ? 'W/S вперёд-назад · A/D в сторону · J/K руки (держать: хук) · U/I ноги · O супер · Пробел блок · C присесть (+J/K апперкот) · Q/E уклон · V вид'
+    : 'A/D назад-вперёд · W/S обход · J/K руки (держать: хук) · U/I ноги · O супер · Пробел блок · C присесть (+J/K апперкот) · Q/E уклон · V вид';
 }
 
 let hurtT = 0;

@@ -1,4 +1,4 @@
-import { ACTS, ATTACKS, RING_R } from './fighter.js?v=5';
+import { ACTS, ATTACKS, RING_R } from './fighter.js?v=6';
 
 const LEVELS = {
   easy: { react: 0.28, defend: 0.25, aggr: 0.9, combo: 0.15 },
@@ -35,7 +35,8 @@ export class AI {
         if (Math.random() < c.defend && !me.busy) {
           const r = Math.random();
           const punch = o.act === 'lp' || o.act === 'rp';
-          if (punch && r < 0.3) this.holdCrouch = 0.45;
+          if (oa.unblock) inp.press[o.act === 'hl' ? 'dr' : 'dl'] = 1; // hooks: dodge away from the swinging hand
+          else if (punch && r < 0.3) this.holdCrouch = 0.45;
           else if (r < 0.75) this.holdBlock = 0.5 + Math.random() * 0.3;
           else inp.press[Math.random() < 0.5 ? 'dl' : 'dr'] = 1;
         }
@@ -63,16 +64,16 @@ export class AI {
     if (me.superReady && d < 1.1 && !me.busy && (opp.isCounterable() || Math.random() < c.aggr * dt)) {
       inp.press.sp = 1; return inp;
     }
-    // a turtle gets thrown
-    if (d < 0.95 && !me.busy && o.blk > 0.5 && Math.random() < c.aggr * dt * 2.5) {
-      inp.press.th = 1; this.cool = 0.4; return inp;
+    // a turtle gets hooked through the guard
+    if (d < 1.0 && !me.busy && o.blk > 0.5 && Math.random() < c.aggr * dt * 2.5) {
+      inp.press[pick(['hl', 'hr'])] = 1; this.cool = 0.5; return inp;
     }
     if (d < 1.12 && !me.busy && this.cool <= 0 && Math.random() < c.aggr * dt * 3) {
       let a;
       if (o.cr > 0.5) a = pick(['lk', 'rk']);
       else if (opR > RING_R - 1.2) a = pick(['lk', 'lk', 'rk']); // push them off the edge
       else if (d > 1.0) a = pick(['lk', 'rk', 'rp']);
-      else a = pick(['lp', 'lp', 'rp', 'rp', 'lk', 'rk']);
+      else a = pick(['lp', 'lp', 'rp', 'rp', 'lk', 'rk', 'hl', 'hr']);
       inp.press[a] = 1;
       this.combo = Math.random() < c.combo ? pick(['lp', 'rp', 'rk']) : null;
       this.cool = 0.15 + Math.random() * (0.8 / c.aggr);

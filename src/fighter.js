@@ -41,7 +41,11 @@ const RKICK = { rf: [0.22, 1.12, 0.95], pw: 1.0, pp: -0.22, pr: -0.3, cy: -0.55,
 const DODGE_L = { pr: -0.5, ox: 0.18, cx: 0.25, py: 0.84, hz: 0.2 };
 const DODGE_R = { pr: 0.5, ox: -0.18, cx: 0.25, py: 0.84, hz: -0.2 };
 const UPPER = { rh: [0.0, 0.62, 0.8], py: 1.0, cy: 0.45, pw: 0.25, pp: -0.15, oz: 0.25, hx: -0.2 };
-const GRAB = { lh: [0.14, 0.42, 0.85], rh: [-0.14, 0.42, 0.85], oz: 0.18, cx: 0.3, py: 0.86 };
+// hooks: wide swing from the side at body height, telegraphed by a long wind-up
+const HOOK_L_WIND = { lh: [0.5, 0.3, -0.1], cy: 0.35, pw: 0.25, py: 0.88, rh: [-0.12, 0.42, 0.22] };
+const HOOK_L = { lh: [-0.15, -0.02, 0.8], cy: -0.65, pw: -0.4, oz: 0.12, py: 0.88 };
+const HOOK_R_WIND = { rh: [-0.5, 0.3, -0.1], cy: -0.35, pw: -0.25, py: 0.88, lh: [0.12, 0.42, 0.22] };
+const HOOK_R = { rh: [0.15, -0.02, 0.8], cy: 0.65, pw: 0.4, oz: 0.12, py: 0.88 };
 const SUPER = { rh: [0.02, 0.48, 1.1], cy: 0.6, pw: 0.4, oz: 0.35, lh: [0.14, 0.38, 0.12], pp: 0.12 };
 const WHIFF = { pp: 0.22, oz: 0.12, cx: 0.2, lh: [0.2, 0.2, 0.3], rh: [-0.2, 0.2, 0.3] };
 const FALL = { tilt: -1.47, lift: 0.13, lh: [0.3, 0.1, 0.1], rh: [-0.3, 0.1, 0.1], hx: 0.3 };
@@ -59,9 +63,11 @@ export const ACTS = {
   // uppercut: crouch + punch
   up: { dur: 0.56, on: 0.12, off: 0.22, limb: 'rh', dmg: 13, push: [2.6, 0], stun: 0.55, stag: 45, heavy: true, snd: 1,
     keys: mkKeys([[0, {}], [0.06, { rh: [-0.05, 0.12, 0.3], py: 0.68, cy: 0.3, pp: 0.25 }], [0.15, UPPER], [0.22, UPPER], [0.56, {}]]) },
-  // throw: beats block, misses a crouching opponent, long recovery on a miss
-  th: { dur: 0.7, on: 0.14, off: 0.24, dmg: 12, push: [5.5, 0], snd: 0,
-    keys: mkKeys([[0, {}], [0.12, GRAB], [0.24, GRAB], [0.4, { lh: [0.2, 0.35, 0.3], rh: [-0.2, 0.35, 0.3], cy: 0.8, pw: 0.5 }], [0.7, {}]]) },
+  // hooks (hold J / K): go through block, only a dodge (or a faster hit) saves you
+  hl: { dur: 0.8, on: 0.34, off: 0.46, limb: 'lh', dmg: 15, push: [2.2, -5], stun: 0.55, stag: 45, heavy: true, unblock: true, snd: 1,
+    keys: mkKeys([[0, {}], [0.24, HOOK_L_WIND], [0.38, HOOK_L], [0.46, HOOK_L], [0.8, {}]]) },
+  hr: { dur: 0.8, on: 0.34, off: 0.46, limb: 'rh', dmg: 15, push: [2.2, 5], stun: 0.55, stag: 45, heavy: true, unblock: true, snd: 1,
+    keys: mkKeys([[0, {}], [0.24, HOOK_R_WIND], [0.38, HOOK_R], [0.46, HOOK_R], [0.8, {}]]) },
   // super: once per round when the rage bar is full, goes through block
   sp: { dur: 0.85, on: 0.3, off: 0.42, limb: 'rh', dmg: 24, push: [11, 0], stun: 0.8, stag: 300, heavy: true, super: true, snd: 2,
     keys: mkKeys([[0, {}], [0.25, { rh: [-0.25, 0.4, -0.15], cy: -0.6, pw: -0.4, py: 0.85 }], [0.34, SUPER], [0.45, SUPER], [0.85, {}]]) },
@@ -74,7 +80,7 @@ export const ACTS = {
   down: { dur: 2.1, keys: mkKeys([[0, {}], [0.38, FALL], [1.4, FALL], [2.1, {}]]) },
   ko: { dur: 1e9, keys: mkKeys([[0, {}], [0.5, FALL], [2, FALL]]) },
 };
-export const ATTACKS = ['lp', 'rp', 'lk', 'rk', 'up', 'th', 'sp'];
+export const ATTACKS = ['lp', 'rp', 'lk', 'rk', 'up', 'hl', 'hr', 'sp'];
 
 function sampleKeys(keys, t, out, w) {
   let i = 0;
@@ -206,7 +212,7 @@ export class Fighter {
 
     // buffered input
     if (inp.press) {
-      for (const p of ['lp', 'rp', 'lk', 'rk', 'dl', 'dr', 'th', 'sp']) if (inp.press[p]) { s.buf = p; s.bufT = 0.18; }
+      for (const p of ['lp', 'rp', 'lk', 'rk', 'dl', 'dr', 'hl', 'hr', 'sp']) if (inp.press[p]) { s.buf = p; s.bufT = 0.18; }
     }
     s.bufT -= dt;
     if (s.bufT <= 0) s.buf = '';
@@ -215,7 +221,7 @@ export class Fighter {
     if (s.act) {
       s.at += dt;
       if (s.at >= s.ad) {
-        const name = s.act, a = ACTS[name], missed = !s.hasHit && (a.heavy || name === 'th');
+        const name = s.act, a = ACTS[name], missed = !s.hasHit && a.heavy;
         s.act = ''; s.at = 0;
         if (missed) this.startAct('wf', name === 'sp' ? 0.45 : undefined);
       }
@@ -300,7 +306,6 @@ export class Fighter {
     const s = this.st, a = ACTS[s.act];
     if (!a) return false;
     if (a.limb) return s.at < a.on;
-    if (s.act === 'th') return s.at < a.on || s.at > a.off;
     if (s.act === 'dl' || s.act === 'dr') return s.at > 0.3;
     return s.act === 'wf';
   }
@@ -384,17 +389,19 @@ export class Fighter {
 
     const f = s.flash;
     const g = this.superReady ? 0.25 + 0.2 * Math.sin(performance.now() / 120) : 0;
-    const sp = s.act === 'sp' && s.at < 0.45 ? 0.8 : 0;
+    const sp = (s.act === 'sp' && s.at < 0.45) || ((s.act === 'hl' || s.act === 'hr') && s.at < 0.4) ? 0.8 : 0;
     for (const m of this.mats) m.emissive.setRGB(f * 0.9 + g + sp, f * 0.25 + g * 0.7 + sp * 0.6, f * 0.15);
     this.blob.position.set(P.ox, 0.005, P.oz);
   }
 
   // world points of the striking limb: [point, radius]
-  strikePoints(limb) {
+  strikePoints(limb, wide) {
     if (!this._sp) this._sp = [new THREE.Vector3(), new THREE.Vector3()];
     if (limb[1] === 'h') {
       this.arms[limb[0]].fist.getWorldPosition(this._sp[0]);
-      return [[this._sp[0], 0.09]];
+      if (!wide) return [[this._sp[0], 0.09]];
+      this.arms[limb[0]].lo.getWorldPosition(this._sp[1]); // hooks also land with the forearm up close
+      return [[this._sp[0], 0.09], [this._sp[1].lerp(this._sp[0], 0.5), 0.1]];
     }
     const L = this.legs[limb[0]];
     L.foot.localToWorld(this._sp[0].set(0, -0.04, 0.1));

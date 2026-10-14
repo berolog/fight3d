@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { ACTS, RING_R } from './fighter.js?v=5';
+import { ACTS, RING_R } from './fighter.js?v=6';
 
 const START_X = 1.4;
 export const ROUND_TIME = 60;
@@ -72,8 +72,6 @@ export class Game {
     a.applyRig(dt); b.applyRig(dt);
     this.checkHit(a, b);
     this.checkHit(b, a);
-    this.checkThrow(a, b);
-    this.checkThrow(b, a);
   }
 
   // You can't walk off the ring, but a knockback can throw you out of it.
@@ -95,32 +93,11 @@ export class Game {
   checkHit(att, def) {
     const atk = att.activeAttack();
     if (!atk || def.downed || def.st.out) return;
-    for (const [p, sr] of att.strikePoints(atk.limb)) {
+    for (const [p, sr] of att.strikePoints(atk.limb, atk.unblock)) {
       for (const z of def.hurtZones()) {
         if (p.distanceTo(z.p) < sr + z.r) { this.resolve(att, def, atk, z.z, p); return; }
       }
     }
-  }
-
-  checkThrow(att, def) {
-    const as = att.st, ds = def.st, a = ACTS.th;
-    if (as.act !== 'th' || as.hasHit || as.at < a.on || as.at > a.off) return;
-    if (def.downed || ds.out || ds.cr > 0.5) return; // crouching ducks under the grab
-    if ((ds.act === 'dl' || ds.act === 'dr') && ds.at < 0.3) return;
-    const d = Math.hypot(ds.x - as.x, ds.z - as.z);
-    if (d > 1.05) return;
-    as.hasHit = 1;
-    const fx = Math.sin(as.yaw), fz = Math.cos(as.yaw);
-    const counter = def.isCounterable();
-    this.damage(att, def, a.dmg, counter);
-    ds.kx += fx * a.push[0]; ds.kz += fz * a.push[0];
-    ds.lv[0] -= 6; ds.hv[0] -= 6;
-    ds.flash = 1; ds.blk = 0; ds.cr = 0; ds.buf = '';
-    const p = def.hurtZones()[1].p;
-    if (ds.hp <= 0) this.koBy(att, def);
-    else { def.startAct('down'); ds.stag = 0; }
-    this.hitstop = 0.15;
-    this.event({ t: 'hit', i: this.idx(def), p: [+p.x.toFixed(2), +p.y.toFixed(2), +p.z.toFixed(2)], h: 1, c: counter ? 1 : 0, z: 'throw', d: Math.round(a.dmg), cb: as.cmb });
   }
 
   damage(att, def, dmg, counter) {
@@ -148,7 +125,7 @@ export class Game {
     const pos = [+p.x.toFixed(2), +p.y.toFixed(2), +p.z.toFixed(2)];
 
     const guarding = (ds.blk > 0.5 && !ds.act) || ds.act === 'bs';
-    if (guarding && facing > 0.3 && !a.super) {
+    if (guarding && facing > 0.3 && !a.super && !a.unblock) {
       ds.hp = Math.max(1, ds.hp - a.dmg * 0.12);
       ds.rg = Math.min(100, ds.rg + 2);
       ds.kx += kx * 0.45; ds.kz += kz * 0.45;
@@ -163,7 +140,7 @@ export class Game {
     }
 
     const counter = def.isCounterable();
-    const dmg = a.dmg * (zone === 'head' ? 1.15 : 1) * (counter ? 1.35 : 1) * (guarding ? 0.6 : 1);
+    const dmg = a.dmg * (zone === 'head' ? 1.15 : 1) * (counter ? 1.35 : 1) * (guarding && a.super ? 0.6 : 1);
     this.damage(att, def, dmg, counter);
     ds.kx += kx; ds.kz += kz;
     const dfx = Math.sin(ds.yaw), dfz = Math.cos(ds.yaw), dlx = dfz, dlz = -dfx;
@@ -189,7 +166,7 @@ export class Game {
       def.startAct('hit', a.stun);
     }
     this.hitstop = a.super ? 0.25 : heavy ? 0.13 : 0.06;
-    this.event({ t: 'hit', i: this.idx(def), p: pos, h: heavy ? 1 : 0, c: counter ? 1 : 0, z: zone, d: Math.round(dmg), cb: as.cmb, s: a.super ? 1 : 0 });
+    this.event({ t: 'hit', i: this.idx(def), p: pos, h: heavy ? 1 : 0, c: counter ? 1 : 0, z: zone, d: Math.round(dmg), cb: as.cmb, s: a.super ? 1 : 0, gb: guarding ? 1 : 0 });
   }
 
   snapshot() {

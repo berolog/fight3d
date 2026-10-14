@@ -54,7 +54,6 @@
   #tbtns button { height: 56px; padding: 0; font-size: 13px; border-radius: 14px; background: rgba(224,72,72,.55); border: 2px solid rgba(255,255,255,.4); touch-action: none; }
   #tbtns button[data-p^="d"] { height: 40px; background: rgba(255,255,255,.18); }
   #tbtns button[data-h] { background: rgba(47,110,224,.55); }
-  #tbtns button[data-p="th"] { height: 40px; background: rgba(120,120,120,.5); }
   #tbtns button[data-p="sp"] { height: 40px; background: rgba(242,182,50,.35); }
   #tbtns button[data-p="sp"].ready { background: rgba(242,182,50,.9); color: #000; }
   #tbtns button.on { filter: brightness(1.6); transform: scale(.95); }
@@ -128,7 +127,7 @@
       <span><kbd>A</kbd> <kbd>D</kbd></span><span>шаг влево / вправо (обход)</span>
       <span><kbd>J</kbd> <kbd>K</kbd></span><span>удар левой / правой рукой</span>
       <span><kbd>U</kbd> <kbd>I</kbd></span><span>удар левой / правой ногой</span>
-      <span><kbd>L</kbd></span><span>бросок (пробивает блок, но не достаёт присевшего)</span>
+      <span>держать <kbd>J</kbd> / <kbd>K</kbd></span><span>хук: пробивает блок, спасает только уклон</span>
       <span><kbd>O</kbd></span><span>суперудар, когда полна жёлтая шкала ярости</span>
       <span><kbd>Пробел</kbd></span><span>блок (держать)</span>
       <span><kbd>C</kbd> / <kbd>Shift</kbd></span><span>присесть (держать), с J/K апперкот</span>
@@ -157,7 +156,7 @@
 <div id="touch" class="hidden">
   <div id="stick"><div id="knob"></div></div>
   <div id="tbtns">
-    <button data-p="th">Бросок</button><button data-p="sp" id="tsup">Супер</button>
+    <button data-p="sp" id="tsup" style="grid-column: span 2">Супер</button>
     <button data-p="dl">⟵ уклон</button><button data-p="dr">уклон ⟶</button>
     <button data-p="lp">Л. рука</button><button data-p="rp">П. рука</button>
     <button data-p="lk">Л. нога</button><button data-p="rk">П. нога</button>
@@ -166,6 +165,6 @@
   <button id="tmenu">☰</button>
 </div>
 
-<script type="module" src="./src/main.js?v=5"></script>
+<script type="module" src="./src/main.js?v=6"></script>
 </body>
 </html>
