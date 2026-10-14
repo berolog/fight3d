@@ -29,7 +29,7 @@
   .keys { font-size: 13px; line-height: 1.7; opacity: .85; display: grid; grid-template-columns: auto 1fr; gap: 0 12px; }
   kbd { background: rgba(255,255,255,.14); border-radius: 4px; padding: 1px 6px; font-family: inherit; font-size: 12px; white-space: nowrap; }
   #hud { position: fixed; inset: 0; pointer-events: none; }
-  .bars { position: absolute; top: 16px; left: 16px; right: 16px; display: flex; gap: 40px; }
+  .bars { position: absolute; top: 16px; left: 16px; right: 16px; display: flex; gap: 16px; }
   .bar { flex: 1; }
   .bar .name { font-weight: 800; font-size: 18px; text-shadow: 0 2px 4px #000; display: flex; justify-content: space-between; }
   .bar .sc { color: #ffd166; letter-spacing: 3px; }
@@ -54,8 +54,39 @@
   #tbtns button { height: 56px; padding: 0; font-size: 13px; border-radius: 14px; background: rgba(224,72,72,.55); border: 2px solid rgba(255,255,255,.4); touch-action: none; }
   #tbtns button[data-p^="d"] { height: 40px; background: rgba(255,255,255,.18); }
   #tbtns button[data-h] { background: rgba(47,110,224,.55); }
+  #tbtns button[data-p="th"] { height: 40px; background: rgba(120,120,120,.5); }
+  #tbtns button[data-p="sp"] { height: 40px; background: rgba(242,182,50,.35); }
+  #tbtns button[data-p="sp"].ready { background: rgba(242,182,50,.9); color: #000; }
   #tbtns button.on { filter: brightness(1.6); transform: scale(.95); }
-  #tmenu { position: absolute; top: 60px; left: 50%; transform: translateX(-50%); width: 44px; height: 36px; padding: 0; flex: none; background: rgba(0,0,0,.4); }
+  #tmenu { position: absolute; top: 92px; left: 50%; transform: translateX(-50%); width: 44px; height: 36px; padding: 0; flex: none; background: rgba(0,0,0,.4); }
+  .bars { align-items: flex-start; }
+  #timer { flex: 0 0 auto; min-width: 56px; text-align: center; font-size: 34px; font-weight: 900; text-shadow: 0 2px 4px #000; margin-top: 8px; }
+  #timer.low { color: #ff5b5b; }
+  .rage { position: relative; height: 8px; margin-top: 4px; width: 60%; background: rgba(0,0,0,.5); border-radius: 3px; overflow: hidden; }
+  .p1 .rage { margin-left: auto; }
+  .rage div { position: absolute; top: 0; bottom: 0; left: 0; background: #f2b632; }
+  .p1 .rage div { left: auto; right: 0; }
+  .rage span { display: none; position: absolute; inset: 0; font-size: 8px; line-height: 8px; text-align: center; font-weight: 900; color: #000; }
+  .rage.full { height: 12px; box-shadow: 0 0 10px #ffd34d; animation: pulse .5s infinite alternate; }
+  .rage.full span { display: block; font-size: 10px; line-height: 12px; }
+  @keyframes pulse { to { box-shadow: 0 0 20px #ffd34d; } }
+  .combo { margin-top: 6px; font-size: 40px; font-weight: 900; font-style: italic; color: #ffd166; text-shadow: 0 3px 0 #000; opacity: 0; }
+  .combo small { font-size: 16px; margin-left: 6px; }
+  .p1 .combo { text-align: right; }
+  #nums { position: absolute; inset: 0; overflow: hidden; }
+  .num { position: absolute; left: 0; top: 0; font-weight: 900; font-size: 26px; color: #fff3b0; text-shadow: 0 2px 0 #000, 0 0 6px #000; }
+  .num.crit { color: #ff6b4a; font-size: 32px; }
+  .num.sup { color: #ffd34d; font-size: 48px; }
+  .lb { position: absolute; left: 0; right: 0; height: 0; background: #000; transition: height .3s; }
+  .lb.top { top: 0; } .lb.bot { bottom: 0; }
+  #rptag { display: none; position: absolute; top: 14px; right: 20px; font-weight: 900; letter-spacing: 3px; color: #ff5b5b; }
+  .replay .lb { height: 11vh; }
+  .replay #rptag { display: block; }
+  .replay .bars, .replay .help { visibility: hidden; }
+  .name-in { text-transform: none !important; letter-spacing: 0 !important; }
+  #colors { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+  .sw { flex: 0 0 auto; width: 30px; height: 30px; padding: 0; border-radius: 50%; border: 3px solid transparent; }
+  .sw.sel { border-color: #fff; }
   .help { position: absolute; bottom: 10px; width: 100%; text-align: center; font-size: 13px; opacity: .75; text-shadow: 0 1px 2px #000; }
 </style>
 <script type="importmap">{ "imports": { "three": "./lib/three.module.min.js" } }</script>
@@ -68,6 +99,10 @@
   <div class="panel">
     <h1>FIGHT<span>3D</span></h1>
     <div class="sub">Простой 3D-файтинг на двоих</div>
+
+    <h2>Твой боец</h2>
+    <div class="row"><input id="pname" maxlength="14" placeholder="Имя" class="name-in"></div>
+    <div id="colors"></div>
 
     <h2>Против компьютера</h2>
     <div class="row">
@@ -93,8 +128,10 @@
       <span><kbd>A</kbd> <kbd>D</kbd></span><span>шаг влево / вправо (обход)</span>
       <span><kbd>J</kbd> <kbd>K</kbd></span><span>удар левой / правой рукой</span>
       <span><kbd>U</kbd> <kbd>I</kbd></span><span>удар левой / правой ногой</span>
+      <span><kbd>L</kbd></span><span>бросок (пробивает блок, но не достаёт присевшего)</span>
+      <span><kbd>O</kbd></span><span>суперудар, когда полна жёлтая шкала ярости</span>
       <span><kbd>Пробел</kbd></span><span>блок (держать)</span>
-      <span><kbd>C</kbd> / <kbd>Shift</kbd></span><span>присесть (держать)</span>
+      <span><kbd>C</kbd> / <kbd>Shift</kbd></span><span>присесть (держать), с J/K апперкот</span>
       <span><kbd>Q</kbd> <kbd>E</kbd></span><span>уклон влево / вправо</span>
       <span><kbd>V</kbd></span><span>вид от первого лица / сбоку</span>
       <span><kbd>Esc</kbd></span><span>выход в меню</span>
@@ -104,9 +141,14 @@
 
 <div id="hud" class="hidden">
   <div class="bars">
-    <div class="bar p0"><div class="name"><span id="n0">P1</span><span class="sc" id="sc0"></span></div><div class="track"><div class="lag" id="lag0"></div><div class="hp" id="hp0"></div></div></div>
-    <div class="bar p1"><div class="name"><span id="n1">P2</span><span class="sc" id="sc1"></span></div><div class="track"><div class="lag" id="lag1"></div><div class="hp" id="hp1"></div></div></div>
+    <div class="bar p0"><div class="name"><span id="n0">P1</span><span class="sc" id="sc0"></span></div><div class="track"><div class="lag" id="lag0"></div><div class="hp" id="hp0"></div></div>
+      <div class="rage" id="rgb0"><div id="rg0"></div><span>СУПЕР</span></div><div class="combo" id="cb0"></div></div>
+    <div id="timer">60</div>
+    <div class="bar p1"><div class="name"><span id="n1">P2</span><span class="sc" id="sc1"></span></div><div class="track"><div class="lag" id="lag1"></div><div class="hp" id="hp1"></div></div>
+      <div class="rage" id="rgb1"><div id="rg1"></div><span>СУПЕР</span></div><div class="combo" id="cb1"></div></div>
   </div>
+  <div id="nums"></div>
+  <div class="lb top"></div><div class="lb bot"></div><div id="rptag">ПОВТОР</div>
   <div id="hurt"></div>
   <div id="big"></div>
   <div class="help" id="help"></div>
@@ -115,6 +157,7 @@
 <div id="touch" class="hidden">
   <div id="stick"><div id="knob"></div></div>
   <div id="tbtns">
+    <button data-p="th">Бросок</button><button data-p="sp" id="tsup">Супер</button>
     <button data-p="dl">⟵ уклон</button><button data-p="dr">уклон ⟶</button>
     <button data-p="lp">Л. рука</button><button data-p="rp">П. рука</button>
     <button data-p="lk">Л. нога</button><button data-p="rk">П. нога</button>
@@ -123,6 +166,6 @@
   <button id="tmenu">☰</button>
 </div>
 
-<script type="module" src="./src/main.js?v=4"></script>
+<script type="module" src="./src/main.js?v=5"></script>
 </body>
 </html>

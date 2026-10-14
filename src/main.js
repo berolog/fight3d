@@ -1,8 +1,8 @@
 import * as THREE from 'three';
-import { Fighter } from './fighter.js?v=4';
-import { Game } from './game.js?v=4';
-import { AI } from './ai.js?v=4';
-import { Sfx } from './audio.js?v=4';
+import { Fighter, RING_R, RING_H } from './fighter.js?v=5';
+import { Game } from './game.js?v=5';
+import { AI } from './ai.js?v=5';
+import { Sfx } from './audio.js?v=5';
 
 // ---------------------------------------------------------------------------
 // Scene
@@ -27,21 +27,26 @@ sun.shadow.mapSize.set(2048, 2048);
 Object.assign(sun.shadow.camera, { left: -6, right: 6, top: 6, bottom: -6, near: 1, far: 30 });
 scene.add(sun, sun.target);
 
-function floorTexture() {
+function floorTexture(rep, a = '#c9c2b4', b = '#bdb5a6') {
   const c = document.createElement('canvas'); c.width = c.height = 256;
   const g = c.getContext('2d');
-  g.fillStyle = '#c9c2b4'; g.fillRect(0, 0, 256, 256);
-  g.fillStyle = '#bdb5a6'; g.fillRect(0, 0, 128, 128); g.fillRect(128, 128, 128, 128);
+  g.fillStyle = a; g.fillRect(0, 0, 256, 256);
+  g.fillStyle = b; g.fillRect(0, 0, 128, 128); g.fillRect(128, 128, 128, 128);
   g.strokeStyle = 'rgba(0,0,0,0.08)'; g.lineWidth = 2; g.strokeRect(0, 0, 256, 256);
   const t = new THREE.CanvasTexture(c);
-  t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(30, 30);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(rep, rep);
   t.anisotropy = 8; t.colorSpace = THREE.SRGBColorSpace;
   return t;
 }
-const floor = new THREE.Mesh(new THREE.PlaneGeometry(60, 60), new THREE.MeshStandardMaterial({ map: floorTexture(), roughness: 0.95 }));
-floor.rotation.x = -Math.PI / 2; floor.receiveShadow = true; scene.add(floor);
-const ring = new THREE.Mesh(new THREE.RingGeometry(3.9, 4, 64), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.5 }));
-ring.rotation.x = -Math.PI / 2; ring.position.y = 0.004; scene.add(ring);
+// Raised round ring: knock the opponent off its edge to win the round.
+const floor = new THREE.Mesh(new THREE.PlaneGeometry(80, 80), new THREE.MeshStandardMaterial({ map: floorTexture(40, '#8f9a87', '#86917e'), roughness: 0.95 }));
+floor.rotation.x = -Math.PI / 2; floor.position.y = -RING_H; floor.receiveShadow = true; scene.add(floor);
+const plat = new THREE.Mesh(new THREE.CylinderGeometry(RING_R + 0.2, RING_R + 0.35, RING_H, 72), new THREE.MeshStandardMaterial({ color: 0x3b4250, roughness: 0.8 }));
+plat.position.y = -RING_H / 2; plat.receiveShadow = true; plat.castShadow = true; scene.add(plat);
+const top = new THREE.Mesh(new THREE.CircleGeometry(RING_R + 0.2, 72), new THREE.MeshStandardMaterial({ map: floorTexture(5), roughness: 0.9 }));
+top.rotation.x = -Math.PI / 2; top.position.y = 0.001; top.receiveShadow = true; scene.add(top);
+const edge = new THREE.Mesh(new THREE.RingGeometry(RING_R - 0.12, RING_R + 0.2, 72), new THREE.MeshBasicMaterial({ color: 0xd8403a }));
+edge.rotation.x = -Math.PI / 2; edge.position.y = 0.004; scene.add(edge);
 
 const fighters = [new Fighter(scene, 0xd63c3c, 'p1'), new Fighter(scene, 0x2f6ee0, 'p2')];
 const game = new Game(fighters);
@@ -87,11 +92,16 @@ function handleEvents(evs) {
     if (e.t === 'hit') {
       burst(e.p, e.h, false); sfx.hit(e.h, e.c);
       if (mode !== 'menu' && e.i === localIdx) hurtFlash(e.h);
-      shake = Math.max(shake, e.h ? 0.22 : 0.08);
-      if (e.c) flashText('КОНТР-УДАР!', 600);
+      shake = Math.max(shake, e.s ? 0.4 : e.h ? 0.22 : 0.08);
+      dmgNumber(e);
+      if (e.cb >= 2) showCombo(1 - e.i, e.cb);
+      if (e.z === 'throw') flashText('БРОСОК!', 700);
+      else if (e.c) flashText('КОНТР-УДАР!', 600);
     } else if (e.t === 'blk') { burst(e.p, false, true); sfx.block(); shake = Math.max(shake, 0.03); }
     else if (e.t === 'sw') sfx.swoosh(e.k);
-    else if (e.t === 'ko') { sfx.ko(); }
+    else if (e.t === 'ko') { sfx.ko(); if (e.why !== 'time') replayPending = { wait: 26 }; }
+    else if (e.t === 'sup') { sfx.superCharge(); flashText('СУПЕРУДАР!', 800); }
+    else if (e.t === 'out') { shake = 0.3; }
     else if (e.t === 'go') sfx.bell();
   }
 }
@@ -101,10 +111,11 @@ function handleEvents(evs) {
 // ---------------------------------------------------------------------------
 const held = new Set();
 let pressed = {};
-const PRESS = { KeyJ: 'lp', KeyK: 'rp', KeyU: 'lk', KeyI: 'rk', KeyQ: 'dl', KeyE: 'dr', Numpad4: 'lp', Numpad5: 'rp', Numpad7: 'lk', Numpad8: 'rk' };
+const PRESS = { KeyJ: 'lp', KeyK: 'rp', KeyL: 'th', KeyU: 'lk', KeyI: 'rk', KeyO: 'sp', KeyQ: 'dl', KeyE: 'dr', Numpad4: 'lp', Numpad5: 'rp', Numpad7: 'lk', Numpad8: 'rk' };
 addEventListener('keydown', (e) => {
   if (e.target.tagName === 'INPUT') return;
   if (e.code === 'Escape') { toMenu(); return; }
+  if (replay && !e.repeat) { endReplay(); return; }
   if (e.code === 'KeyV' && !e.repeat) { setView(view === 'fp' ? 'tp' : 'fp'); return; }
   if (!e.repeat && PRESS[e.code]) pressed[PRESS[e.code]] = 1;
   held.add(e.code);
@@ -142,6 +153,7 @@ const touch = { x: 0, y: 0, block: false, crouch: false };
   document.querySelectorAll('#touch [data-p], #touch [data-h]').forEach((b) => {
     const down = (e) => {
       e.preventDefault(); b.classList.add('on');
+      if (replay) endReplay();
       if (b.dataset.p) pressed[b.dataset.p] = 1; else touch[b.dataset.h] = true;
     };
     const up = () => { b.classList.remove('on'); if (b.dataset.h) touch[b.dataset.h] = false; };
@@ -160,7 +172,7 @@ function localInput() {
   const inp = {
     mf: view === 'fp' ? y : x,
     ms: view === 'fp' ? -x : y,
-    block: H('Space', 'KeyL') || touch.block,
+    block: H('Space') || touch.block,
     crouch: H('KeyC', 'ControlLeft', 'ShiftLeft') || touch.crouch,
     press: pressed,
   };
@@ -183,16 +195,48 @@ function show(id) {
   if (t && !document.fullscreenElement) {
     document.documentElement.requestFullscreen?.().then(() => screen.orientation?.lock?.('landscape')).catch(() => {});
   }
-  $('hud').classList.toggle('swap', localIdx === 1);
   for (const s of ['menu', 'hud']) $(s).classList.toggle('hidden', s !== id);
 }
-function setNames(a, b) { $('n0').textContent = a; $('n1').textContent = b; }
+// ---------------------------------------------------------------------------
+// Player profile: name and colour (remembered in this browser)
+// ---------------------------------------------------------------------------
+const COLORS = [0xd63c3c, 0x2f6ee0, 0x2fae5a, 0xf2a20c, 0x8b4fd8, 0x1fb5b5, 0xe85aa8, 0x2a2a2e];
+const hex = (c) => '#' + c.toString(16).padStart(6, '0');
+const altColor = (c) => (c === COLORS[1] ? COLORS[0] : COLORS[1]);
+let profile = { n: 'Игрок', c: COLORS[0] };
+try { Object.assign(profile, JSON.parse(localStorage.getItem('fight3d.profile') || '{}')); } catch (e) {}
+function saveProfile() { try { localStorage.setItem('fight3d.profile', JSON.stringify(profile)); } catch (e) {} }
+(function setupProfile() {
+  const box = document.getElementById('colors'), inp = document.getElementById('pname');
+  inp.value = profile.n;
+  inp.addEventListener('input', () => { profile.n = inp.value.trim().slice(0, 14) || 'Игрок'; saveProfile(); });
+  for (const c of COLORS) {
+    const b = document.createElement('button');
+    b.className = 'sw'; b.style.background = hex(c); b.title = hex(c);
+    b.onclick = () => { profile.c = c; saveProfile(); mark(); fighters[0].setColor(c); };
+    box.appendChild(b);
+  }
+  const mark = () => [...box.children].forEach((b, i) => b.classList.toggle('sel', COLORS[i] === profile.c));
+  mark(); fighters[0].setColor(profile.c);
+})();
+// me/other: {n, c}. The host keeps its colour; the joining player switches if both picked the same.
+function applyProfiles(me, other, myIdx) {
+  const host = myIdx === 0 ? me : other, cli = myIdx === 0 ? other : me;
+  const hc = host.c, cc = cli.c === hc ? altColor(hc) : cli.c;
+  fighters[0].setColor(hc); fighters[1].setColor(cc);
+  const names = [host.n, cli.n];
+  const mine = names[myIdx], theirs = names[1 - myIdx];
+  $('n0').textContent = mine; $('n1').textContent = theirs;
+  $('hp0').style.background = hex(fighters[myIdx].color);
+  $('hp1').style.background = hex(fighters[1 - myIdx].color);
+}
 
 function startAI(level) {
   closeNet();
   mode = 'ai'; localIdx = 0; ai = new AI(level);
   fighters.forEach(f => f.smooth = false);
-  game.newMatch(); setNames('Ты', 'ИИ');
+  game.newMatch();
+  applyProfiles(profile, { n: 'ИИ', c: altColor(profile.c) }, 0);
   show('hud'); sfx.resume();
 }
 
@@ -246,9 +290,11 @@ function hostRoom() {
     c.on('open', () => {
       mode = 'host'; localIdx = 0; remoteInp = { press: {} };
       fighters.forEach(f => f.smooth = false);
-      game.newMatch(); setNames('Ты', 'Соперник'); show('hud');
+      game.newMatch(); applyProfiles(profile, { n: 'Соперник', c: altColor(profile.c) }, 0); show('hud');
+      c.send({ t: 'hi', n: profile.n, c: profile.c });
     });
     c.on('data', (d) => {
+      if (d.t === 'hi') applyProfiles(profile, d, 0);
       if (d.t === 'i') {
         const pr = Object.assign(remoteInp.press || {}, {});
         for (const k of d.p) pr[k] = 1;
@@ -286,10 +332,15 @@ function joinRoom(code) {
       clearTimeout(joinTimer);
       mode = 'client'; localIdx = 1; lastSnap = null;
       fighters.forEach(f => f.smooth = true);
-      setNames('Ты', 'Соперник'); show('hud');
+      applyProfiles(profile, { n: 'Соперник', c: altColor(profile.c) }, 1); show('hud');
+      conn.send({ t: 'hi', n: profile.n, c: profile.c });
     });
     conn.on('data', (d) => {
-      if (d.t === 's') { lastSnap = d; if (d.e && d.e.length) handleEvents(d.e); }
+      if (d.t === 'hi') applyProfiles(profile, d, 1);
+      if (d.t === 's') {
+        lastSnap = d; record(d.s, d.e || []);
+        if (d.e && d.e.length) handleEvents(d.e);
+      }
     });
     conn.on('close', () => { if (mode === 'client') toMenu('Соединение закрыто.'); });
   });
@@ -313,6 +364,43 @@ if (urlRoom) { $('joinCode').value = urlRoom; joinRoom(urlRoom); }
 const lag = [100, 100];
 let flashUntil = 0, flashMsg = '';
 function flashText(t, ms) { flashMsg = t; flashUntil = performance.now() + ms; }
+
+// floating damage numbers
+const nums = [];
+const _np = new THREE.Vector3();
+function dmgNumber(e) {
+  if (mode === 'menu' || !e.d) return;
+  const el = document.createElement('div');
+  el.className = 'num' + (e.s ? ' sup' : e.c ? ' crit' : '');
+  el.textContent = e.d;
+  $('nums').appendChild(el);
+  nums.push({ el, p: new THREE.Vector3(e.p[0], e.p[1] + 0.15, e.p[2]), t: 0 });
+}
+function updateNums(dt) {
+  for (let i = nums.length - 1; i >= 0; i--) {
+    const n = nums[i];
+    n.t += dt; n.p.y += dt * 0.5;
+    _np.copy(n.p).project(camera);
+    const vis = _np.z < 1 && !replay;
+    n.el.style.transform = `translate(${(_np.x + 1) / 2 * innerWidth}px, ${(1 - _np.y) / 2 * innerHeight}px) translate(-50%, -50%) scale(${1 + Math.max(0, 0.3 - n.t) * 2})`;
+    n.el.style.opacity = vis ? Math.max(0, 1 - Math.max(0, n.t - 0.5) / 0.4) : 0;
+    if (n.t > 0.9) { n.el.remove(); nums.splice(i, 1); }
+  }
+}
+// combo counter next to the attacker's health bar
+const comboT = [0, 0];
+function showCombo(attIdx, n) {
+  const side = attIdx === localIdx ? 0 : 1;
+  const w = n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 10 || n % 100 >= 20) ? 'УДАРА' : 'УДАРОВ';
+  $('cb' + side).innerHTML = n + '<small>' + w + '</small>';
+  comboT[side] = 1.4;
+}
+function updateCombo(dt) {
+  for (let i = 0; i < 2; i++) {
+    comboT[i] = Math.max(0, comboT[i] - dt);
+    $('cb' + i).style.opacity = Math.min(1, comboT[i] * 3);
+  }
+}
 function updateHud(dt) {
   // bar 0 (left) is always the local player
   for (let i = 0; i < 2; i++) {
@@ -322,11 +410,20 @@ function updateHud(dt) {
     $('hp' + i).style.width = hp + '%';
     $('lag' + i).style.width = lag[i] + '%';
     $('sc' + i).textContent = '●'.repeat(game.rs.sc[fi]);
+    const f = fighters[fi];
+    $('rg' + i).style.width = f.st.rg + '%';
+    $('rgb' + i).classList.toggle('full', f.superReady);
   }
+  $('tsup').classList.toggle('ready', fighters[localIdx].superReady);
   const rs = game.rs;
+  const tm = Math.ceil(rs.tm ?? 60);
+  $('timer').textContent = tm;
+  $('timer').classList.toggle('low', rs.ph === 'fight' && tm <= 10);
   let msg = '';
-  if (rs.ph === 'intro') msg = rs.t < 1.1 ? 'РАУНД ' + rs.n : 'БОЙ!';
-  else if (rs.ph === 'ko') msg = 'K.O.<small>' + (rs.w === localIdx ? 'Ты победил!' : 'Ты проиграл') + '</small>';
+  const res = rs.w === -1 ? 'Ничья' : rs.w === localIdx ? 'Ты победил!' : 'Ты проиграл';
+  if (replay) msg = '';
+  else if (rs.ph === 'intro') msg = rs.t < 1.1 ? 'РАУНД ' + rs.n : 'БОЙ!';
+  else if (rs.ph === 'ko') msg = ({ ko: 'K.O.', out: 'РИНГ-АУТ!', time: 'ВРЕМЯ!' }[rs.why] || 'K.O.') + '<small>' + res + '</small>';
   else if (performance.now() < flashUntil) msg = '<small>' + flashMsg + '</small>';
   if ($('big').innerHTML !== msg) $('big').innerHTML = msg;
 }
@@ -373,8 +470,8 @@ function setView(v) {
   camera.fov = v === 'fp' ? 72 : 40; camera.updateProjectionMatrix();
   fighters.forEach((f, i) => f.setFirstPerson(v === 'fp' && i === localIdx && mode !== 'menu'));
   $('help').textContent = v === 'fp'
-    ? 'W/S вперёд-назад · A/D в сторону · J/K руки · U/I ноги · Пробел блок · C присесть · Q/E уклон · V вид · Esc меню'
-    : 'A/D назад-вперёд · W/S обход · J/K руки · U/I ноги · Пробел блок · C присесть · Q/E уклон · V вид · Esc меню';
+    ? 'W/S вперёд-назад · A/D в сторону · J/K руки · L бросок · U/I ноги · O супер · Пробел блок · C присесть (+J/K апперкот) · Q/E уклон · V вид'
+    : 'A/D назад-вперёд · W/S обход · J/K руки · L бросок · U/I ноги · O супер · Пробел блок · C присесть (+J/K апперкот) · Q/E уклон · V вид';
 }
 
 let hurtT = 0;
@@ -406,6 +503,46 @@ function updateCamera(dt) {
 }
 
 // ---------------------------------------------------------------------------
+// Slow-motion replay of the knockout, from recorded fighter states
+// ---------------------------------------------------------------------------
+const rec = [];
+let replay = null, replayPending = null;
+const REPLAY_FRAMES = 110, REPLAY_SPEED = 0.35;
+function record(states, evs) {
+  rec.push({ s: JSON.parse(JSON.stringify(states)), e: evs });
+  if (rec.length > 300) rec.shift();
+  if (replayPending && --replayPending.wait <= 0) {
+    replayPending = null;
+    replay = { frames: rec.slice(-REPLAY_FRAMES), t: 0, i: -1, ang: Math.random() * Math.PI * 2 };
+    $('hud').classList.add('replay');
+    fighters.forEach(f => f.setFirstPerson(false));
+    camera.fov = 50; camera.updateProjectionMatrix();
+  }
+}
+function endReplay() {
+  replay = null; replayPending = null;
+  $('hud').classList.remove('replay');
+  setView(view);
+}
+const _rm = new THREE.Vector3();
+function renderReplay(dt) {
+  replay.t += dt;
+  const idx = Math.min(replay.frames.length - 1, Math.floor(replay.t * 60 * REPLAY_SPEED));
+  for (let i = replay.i + 1; i <= idx; i++) for (const e of replay.frames[i].e) if (e.t === 'hit') burst(e.p, e.h, false);
+  replay.i = idx;
+  const fr = replay.frames[idx];
+  const real = fighters.map(f => [f.st, f.smooth]);
+  fighters.forEach((f, i) => { f.st = fr.s[i]; f.smooth = false; f.applyRig(0); });
+  _rm.set((fr.s[0].x + fr.s[1].x) / 2, 0, (fr.s[0].z + fr.s[1].z) / 2);
+  const a = replay.ang + replay.t * 0.22;
+  camera.position.set(_rm.x + Math.sin(a) * 3.3, 1.35, _rm.z + Math.cos(a) * 3.3);
+  camera.lookAt(_rm.x, 0.95, _rm.z);
+  renderer.render(scene, camera);
+  fighters.forEach((f, i) => { f.st = real[i][0]; f.smooth = real[i][1]; });
+  if (idx >= replay.frames.length - 1 || game.rs.ph === 'intro') endReplay();
+}
+
+// ---------------------------------------------------------------------------
 // Main loop
 // ---------------------------------------------------------------------------
 const DT = 1 / 60;
@@ -417,15 +554,18 @@ function frame(now) {
   if (mode === 'ai' || mode === 'host') {
     acc += dt;
     let steps = 0;
+    const evs = [];
     while (acc >= DT && steps < 4) {
       const mine = localInput();
       const other = mode === 'ai' ? ai.think(DT, fighters[1], fighters[0]) : remoteInp;
       if (mode === 'host') remoteInp = Object.assign({}, remoteInp, { press: {} });
       game.step(DT, [mine, other]);
+      const se = game.events; game.events = [];
+      evs.push(...se);
+      record([fighters[0].st, fighters[1].st], se);
       acc -= DT; steps++;
     }
     if (steps === 4) acc = 0;
-    const evs = game.events; game.events = [];
     handleEvents(evs);
     if (mode === 'host' && conn && conn.open) {
       const snap = game.snapshot(); snap.e = evs;
@@ -446,10 +586,15 @@ function frame(now) {
   }
 
   updateFx(dt);
+  if (mode === 'menu' && replay) endReplay();
   if (mode === 'menu') {
-    camera.position.set(Math.sin(menuT * 0.15) * 5.5, 2.2, Math.cos(menuT * 0.15) * 5.5);
+    camera.position.set(Math.sin(menuT * 0.15) * 5.5, 2.4, Math.cos(menuT * 0.15) * 5.5);
     camera.lookAt(0, 1.1, 0);
-  } else { updateCamera(dt); updateHud(dt); }
+  } else {
+    updateHud(dt); updateNums(dt); updateCombo(dt);
+    if (replay) { renderReplay(dt); return; }
+    updateCamera(dt);
+  }
   if (mode === 'menu' && camera.fov !== 40) { camera.fov = 40; camera.updateProjectionMatrix(); fighters.forEach(f => f.setFirstPerson(false)); }
   renderer.render(scene, camera);
 }
@@ -463,4 +608,4 @@ show('menu');
 requestAnimationFrame(frame);
 
 // debug hooks for automated testing
-window.__fight = { game, fighters, startAI, get mode() { return mode; } };
+window.__fight = { game, fighters, startAI, get mode() { return mode; }, get replay() { return replay; } };

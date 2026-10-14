@@ -40,6 +40,10 @@ const FKICK = { lf: [0.06, 1.02, 1.15], pp: -0.38, py: 0.9, rf: [-0.12, 0.08, -0
 const RKICK = { rf: [0.22, 1.12, 0.95], pw: 1.0, pp: -0.22, pr: -0.3, cy: -0.55, py: 0.9, lf: [0.12, 0.08, 0.05] };
 const DODGE_L = { pr: -0.5, ox: 0.18, cx: 0.25, py: 0.84, hz: 0.2 };
 const DODGE_R = { pr: 0.5, ox: -0.18, cx: 0.25, py: 0.84, hz: -0.2 };
+const UPPER = { rh: [0.0, 0.62, 0.8], py: 1.0, cy: 0.45, pw: 0.25, pp: -0.15, oz: 0.25, hx: -0.2 };
+const GRAB = { lh: [0.14, 0.42, 0.85], rh: [-0.14, 0.42, 0.85], oz: 0.18, cx: 0.3, py: 0.86 };
+const SUPER = { rh: [0.02, 0.48, 1.1], cy: 0.6, pw: 0.4, oz: 0.35, lh: [0.14, 0.38, 0.12], pp: 0.12 };
+const WHIFF = { pp: 0.22, oz: 0.12, cx: 0.2, lh: [0.2, 0.2, 0.3], rh: [-0.2, 0.2, 0.3] };
 const FALL = { tilt: -1.47, lift: 0.13, lh: [0.3, 0.1, 0.1], rh: [-0.3, 0.1, 0.1], hx: 0.3 };
 
 // push: [forward, left] in attacker space (m/s). dmg in HP.
@@ -52,13 +56,25 @@ export const ACTS = {
     keys: mkKeys([[0, {}], [0.09, { lf: [0.12, 0.6, 0.4], py: 0.9, pp: -0.1 }], [0.2, FKICK], [0.3, FKICK], [0.46, { lf: [0.12, 0.5, 0.3], pp: -0.1 }], [0.66, {}]]) },
   rk: { dur: 0.74, on: 0.21, off: 0.33, limb: 'rf', dmg: 16, push: [2.6, 6.5], stun: 0.6, stag: 40, heavy: true, snd: 2,
     keys: mkKeys([[0, {}], [0.1, { rf: [-0.5, 0.6, 0.0], pw: 0.45, py: 0.9, pr: -0.1 }], [0.23, RKICK], [0.33, RKICK], [0.52, { rf: [-0.25, 0.45, -0.05], pw: 0.4 }], [0.74, {}]]) },
-  dl: { dur: 0.42, keys: mkKeys([[0, {}], [0.12, DODGE_L], [0.26, DODGE_L], [0.42, {}]]), side: 1 },
-  dr: { dur: 0.42, keys: mkKeys([[0, {}], [0.12, DODGE_R], [0.26, DODGE_R], [0.42, {}]]), side: -1 },
+  // uppercut: crouch + punch
+  up: { dur: 0.56, on: 0.12, off: 0.22, limb: 'rh', dmg: 13, push: [2.6, 0], stun: 0.55, stag: 45, heavy: true, snd: 1,
+    keys: mkKeys([[0, {}], [0.06, { rh: [-0.05, 0.12, 0.3], py: 0.68, cy: 0.3, pp: 0.25 }], [0.15, UPPER], [0.22, UPPER], [0.56, {}]]) },
+  // throw: beats block, misses a crouching opponent, long recovery on a miss
+  th: { dur: 0.7, on: 0.14, off: 0.24, dmg: 12, push: [5.5, 0], snd: 0,
+    keys: mkKeys([[0, {}], [0.12, GRAB], [0.24, GRAB], [0.4, { lh: [0.2, 0.35, 0.3], rh: [-0.2, 0.35, 0.3], cy: 0.8, pw: 0.5 }], [0.7, {}]]) },
+  // super: once per round when the rage bar is full, goes through block
+  sp: { dur: 0.85, on: 0.3, off: 0.42, limb: 'rh', dmg: 24, push: [11, 0], stun: 0.8, stag: 300, heavy: true, super: true, snd: 2,
+    keys: mkKeys([[0, {}], [0.25, { rh: [-0.25, 0.4, -0.15], cy: -0.6, pw: -0.4, py: 0.85 }], [0.34, SUPER], [0.45, SUPER], [0.85, {}]]) },
+  // dodges: moving out of the way is free, coming back is not (counter-hit window)
+  dl: { dur: 0.52, keys: mkKeys([[0, {}], [0.12, DODGE_L], [0.26, DODGE_L], [0.52, {}]]), side: 1 },
+  dr: { dur: 0.52, keys: mkKeys([[0, {}], [0.12, DODGE_R], [0.26, DODGE_R], [0.52, {}]]), side: -1 },
+  wf: { dur: 0.28, keys: mkKeys([[0, {}], [0.1, WHIFF], [0.28, {}]]) }, // stumble after a missed heavy attack
+  bs: { dur: 0.2, keys: mkKeys([[0, {}], [1, {}]]) }, // block stun
   hit: { dur: 0.3, keys: mkKeys([[0, {}], [1, {}]]) },
   down: { dur: 2.1, keys: mkKeys([[0, {}], [0.38, FALL], [1.4, FALL], [2.1, {}]]) },
   ko: { dur: 1e9, keys: mkKeys([[0, {}], [0.5, FALL], [2, FALL]]) },
 };
-export const ATTACKS = ['lp', 'rp', 'lk', 'rk'];
+export const ATTACKS = ['lp', 'rp', 'lk', 'rk', 'up', 'th', 'sp'];
 
 function sampleKeys(keys, t, out, w) {
   let i = 0;
@@ -79,12 +95,14 @@ export function newState(x, z) {
     hp: 100, act: '', at: 0, ad: 0, hasHit: 0, buf: '', bufT: 0,
     blk: 0, cr: 0, ph: 0, sp: 0, mvx: 0, mvz: 0,
     ln: [0, 0, 0], lv: [0, 0, 0], hd: [0, 0], hv: [0, 0], stag: 0, flash: 0,
+    y: 0, vy: 0, out: 0, dcd: 0, rg: 0, su: 0, cmb: 0, cmbT: 0,
   };
 }
 
 const tmpV = new THREE.Vector3(), tmpV2 = new THREE.Vector3(), tmpV3 = new THREE.Vector3();
 const tmpQ = new THREE.Quaternion(), tmpQ2 = new THREE.Quaternion();
 const DOWN = new THREE.Vector3(0, -1, 0);
+export const RING_R = 4.8, RING_H = 0.35;
 const _C = new THREE.Vector3();
 
 function angleLerp(a, b, t) {
@@ -188,7 +206,7 @@ export class Fighter {
 
     // buffered input
     if (inp.press) {
-      for (const p of ['lp', 'rp', 'lk', 'rk', 'dl', 'dr']) if (inp.press[p]) { s.buf = p; s.bufT = 0.18; }
+      for (const p of ['lp', 'rp', 'lk', 'rk', 'dl', 'dr', 'th', 'sp']) if (inp.press[p]) { s.buf = p; s.bufT = 0.18; }
     }
     s.bufT -= dt;
     if (s.bufT <= 0) s.buf = '';
@@ -196,15 +214,26 @@ export class Fighter {
     // action timeline
     if (s.act) {
       s.at += dt;
-      if (s.at >= s.ad) { s.act = ''; s.at = 0; }
+      if (s.at >= s.ad) {
+        const name = s.act, a = ACTS[name], missed = !s.hasHit && (a.heavy || name === 'th');
+        s.act = ''; s.at = 0;
+        if (missed) this.startAct('wf', name === 'sp' ? 0.45 : undefined);
+      }
     }
+    s.dcd = Math.max(0, s.dcd - dt);
+    s.cmbT = Math.max(0, s.cmbT - dt);
     const free = !s.act;
     let wantBlk = 0, wantCr = 0, mvF = 0, mvL = 0;
     if (free) {
       if (s.buf) {
-        const a = s.buf; s.buf = ''; s.bufT = 0;
-        this.startAct(a);
-        if (a === 'dl' || a === 'dr') {
+        let a = s.buf; s.buf = ''; s.bufT = 0;
+        if ((a === 'lp' || a === 'rp') && (s.cr > 0.4 || inp.crouch)) a = 'up';
+        if (a === 'sp' && !this.superReady) a = '';
+        if ((a === 'dl' || a === 'dr') && s.dcd > 0) a = '';
+        if (a) this.startAct(a);
+        if (a === 'sp') { s.rg = 0; s.su = 1; game.event({ t: 'sup', i: game.idx(this) }); }
+        if (!a) { /* dropped input */ } else if (a === 'dl' || a === 'dr') {
+          s.dcd = 0.9;
           const side = ACTS[a].side * 3.6;
           s.kx += lx * side; s.kz += lz * side;
           game.event({ t: 'sw', i: game.idx(this), k: 3 });
@@ -217,6 +246,7 @@ export class Fighter {
         }
       }
     }
+    if (s.act === 'bs') wantBlk = 1;
     s.blk += (wantBlk - s.blk) * Math.min(1, dt * 18);
     s.cr += ((s.act && ATTACKS.includes(s.act) ? 0 : wantCr) - s.cr) * Math.min(1, dt * 14);
 
@@ -234,9 +264,8 @@ export class Fighter {
     s.kx *= fr; s.kz *= fr;
     const vx = s.wx + s.kx, vz = s.wz + s.kz;
     s.x += vx * dt; s.z += vz * dt;
-    // arena bounds
-    const r = Math.hypot(s.x, s.z), R = 14;
-    if (r > R) { s.x *= R / r; s.z *= R / r; }
+    // falling off the ring
+    if (s.out) { s.vy -= 12 * dt; s.y = Math.max(-RING_H, s.y + s.vy * dt); }
 
     // local move for walk cycle
     s.mvz = vx * fx + vz * fz; s.mvx = vx * lx + vz * lz;
@@ -263,9 +292,17 @@ export class Fighter {
     return s.at >= a.on && s.at <= a.off ? a : null;
   }
 
+  get superReady() { return this.st.rg >= 100 && !this.st.su; }
+  get knocked() { const a = this.st.act; return a === 'hit' || a === 'down' || a === 'ko'; }
+
+  // caught in startup, in the recovery of a miss, or coming back from a dodge
   isCounterable() {
     const s = this.st, a = ACTS[s.act];
-    return a && a.limb && s.at < a.on;
+    if (!a) return false;
+    if (a.limb) return s.at < a.on;
+    if (s.act === 'th') return s.at < a.on || s.at > a.off;
+    if (s.act === 'dl' || s.act === 'dr') return s.at > 0.3;
+    return s.act === 'wf';
   }
 
   // ---- rendering / rig ----
@@ -307,7 +344,7 @@ export class Fighter {
       this.rx += (s.x - this.rx) * k; this.rz += (s.z - this.rz) * k;
       if (Math.hypot(s.x - this.rx, s.z - this.rz) > 1.5) { this.rx = s.x; this.rz = s.z; }
     } else { this.rx = s.x; this.rz = s.z; }
-    this.root.position.set(this.rx, 0, this.rz);
+    this.root.position.set(this.rx, s.y || 0, this.rz);
     this.root.rotation.y = s.yaw;
     this.body.position.set(P.ox, P.lift, P.oz);
     this.body.rotation.set(P.tilt, 0, 0);
@@ -346,7 +383,9 @@ export class Fighter {
     this.root.updateMatrixWorld(true);
 
     const f = s.flash;
-    for (const m of this.mats) m.emissive.setRGB(f * 0.9, f * 0.25, f * 0.15);
+    const g = this.superReady ? 0.25 + 0.2 * Math.sin(performance.now() / 120) : 0;
+    const sp = s.act === 'sp' && s.at < 0.45 ? 0.8 : 0;
+    for (const m of this.mats) m.emissive.setRGB(f * 0.9 + g + sp, f * 0.25 + g * 0.7 + sp * 0.6, f * 0.15);
     this.blob.position.set(P.ox, 0.005, P.oz);
   }
 
@@ -372,6 +411,11 @@ export class Fighter {
   }
 
   // hide what would clip into the camera when viewed from this fighter's eyes
+  setColor(hex) {
+    this.color = hex;
+    this.mats[1].color.setHex(hex); this.mats[3].color.setHex(hex);
+  }
+
   setFirstPerson(on) {
     this.head.visible = !on;
     for (const k of ['l', 'r']) for (const m of this.arms[k].sh) m.visible = !on;
