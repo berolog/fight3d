@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { ACTS, RING_R } from './fighter.js?v=6';
+import { ACTS, RING_R } from './fighter.js?v=7';
 
 const START_X = 1.4;
 export const ROUND_TIME = 60;

@@ -1,8 +1,8 @@
 import * as THREE from 'three';
-import { Fighter, RING_R, RING_H } from './fighter.js?v=6';
-import { Game } from './game.js?v=6';
-import { AI } from './ai.js?v=6';
-import { Sfx } from './audio.js?v=6';
+import { Fighter, RING_R, RING_H } from './fighter.js?v=7';
+import { Game } from './game.js?v=7';
+import { AI } from './ai.js?v=7';
+import { Sfx } from './audio.js?v=7';
 
 // ---------------------------------------------------------------------------
 // Scene
