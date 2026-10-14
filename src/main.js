@@ -1,8 +1,8 @@
 import * as THREE from 'three';
-import { Fighter } from './fighter.js?v=3';
-import { Game } from './game.js?v=3';
-import { AI } from './ai.js?v=3';
-import { Sfx } from './audio.js?v=3';
+import { Fighter } from './fighter.js?v=4';
+import { Game } from './game.js?v=4';
+import { AI } from './ai.js?v=4';
+import { Sfx } from './audio.js?v=4';
 
 // ---------------------------------------------------------------------------
 // Scene
@@ -197,6 +197,7 @@ function startAI(level) {
 }
 
 function closeNet() {
+  clearTimeout(joinTimer);
   try { conn && conn.close(); } catch (e) {}
   try { peer && peer.destroy(); } catch (e) {}
   conn = null; peer = null;
@@ -210,7 +211,17 @@ function toMenu(msg) {
 const CODE_CH = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
 // ?ps=host:port points PeerJS at a self-hosted signaling server (used for local testing)
 const ps = new URLSearchParams(location.search).get('ps');
-const peerOpts = ps ? { host: ps.split(':')[0], port: +ps.split(':')[1], path: '/myapp', secure: false } : {};
+// STUN finds the public address; TURN relays traffic when a direct link is impossible
+// (mobile internet, strict routers).
+const ICE = {
+  iceServers: [
+    { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302', 'stun:stun.cloudflare.com:3478'] },
+    { urls: ['turn:openrelay.metered.ca:80', 'turn:openrelay.metered.ca:443', 'turn:openrelay.metered.ca:443?transport=tcp'], username: 'openrelayproject', credential: 'openrelayproject' },
+  ],
+};
+const peerOpts = Object.assign({ config: ICE, debug: 1 },
+  ps ? { host: ps.split(':')[0], port: +ps.split(':')[1], path: '/myapp', secure: false } : {});
+let joinTimer = 0;
 const peerId = (code) => 'fight3d-room-' + code.toLowerCase();
 function newCode() { let s = ''; for (let i = 0; i < 5; i++) s += CODE_CH[Math.floor(Math.random() * CODE_CH.length)]; return s; }
 
@@ -227,8 +238,11 @@ function hostRoom() {
     $('netStatus').textContent = 'Ждём соперника… Отправь другу код или ссылку.';
   });
   peer.on('connection', (c) => {
-    if (conn) { c.close(); return; }
+    if (conn && conn.open) { c.close(); return; }
+    try { conn && conn.close(); } catch (e) {}
     conn = c;
+    $('netStatus').textContent = 'Соперник подключается…';
+    c.on('error', () => { if (conn === c && !c.open) { conn = null; $('netStatus').textContent = 'Соперник не смог подключиться. Ждём новую попытку…'; } });
     c.on('open', () => {
       mode = 'host'; localIdx = 0; remoteInp = { press: {} };
       fighters.forEach(f => f.smooth = false);
@@ -241,8 +255,14 @@ function hostRoom() {
         remoteInp = { mf: d.mf, ms: d.ms, block: d.b, crouch: d.c, press: pr };
       }
     });
-    c.on('close', () => toMenu('Соперник отключился.'));
+    c.on('close', () => {
+      if (conn !== c) return;
+      if (mode === 'host') toMenu('Соперник отключился.');
+      else { conn = null; $('netStatus').textContent = 'Соперник не смог подключиться. Ждём новую попытку…'; }
+    });
   });
+  // keep the room reachable if the link to the signaling server drops (sleep, flaky Wi-Fi)
+  peer.on('disconnected', () => { try { peer && !peer.destroyed && peer.reconnect(); } catch (e) {} });
   peer.on('error', (e) => {
     if (e.type === 'unavailable-id') return hostRoom();
     $('netStatus').textContent = 'Ошибка сети: ' + e.type;
@@ -253,11 +273,17 @@ function joinRoom(code) {
   code = (code || '').trim().toUpperCase();
   if (!code) return;
   closeNet(); sfx.resume();
-  $('netStatus').textContent = 'Подключаюсь к ' + code + '…';
+  $('netStatus').textContent = 'Связываюсь с сервером…';
+  clearTimeout(joinTimer);
+  const fail = (msg) => { clearTimeout(joinTimer); closeNet(); $('netStatus').textContent = msg; };
+  joinTimer = setTimeout(() => fail('Не удалось соединиться за 20 секунд. Проверь код, попроси друга не сворачивать вкладку с комнатой и попробуй ещё раз. Если не помогает, подключитесь оба к одной Wi-Fi сети.'), 20000);
   peer = new Peer(peerOpts);
   peer.on('open', () => {
+    $('netStatus').textContent = 'Ищу комнату ' + code + ' и соединяюсь…';
     conn = peer.connect(peerId(code), { reliable: true });
+    conn.on('error', (e) => fail('Ошибка соединения: ' + (e.type || e.message || e)));
     conn.on('open', () => {
+      clearTimeout(joinTimer);
       mode = 'client'; localIdx = 1; lastSnap = null;
       fighters.forEach(f => f.smooth = true);
       setNames('Ты', 'Соперник'); show('hud');
@@ -265,10 +291,10 @@ function joinRoom(code) {
     conn.on('data', (d) => {
       if (d.t === 's') { lastSnap = d; if (d.e && d.e.length) handleEvents(d.e); }
     });
-    conn.on('close', () => toMenu('Соединение закрыто.'));
+    conn.on('close', () => { if (mode === 'client') toMenu('Соединение закрыто.'); });
   });
   peer.on('error', (e) => {
-    $('netStatus').textContent = e.type === 'peer-unavailable' ? 'Комната ' + code + ' не найдена.' : 'Ошибка сети: ' + e.type;
+    fail(e.type === 'peer-unavailable' ? 'Комната ' + code + ' не найдена. Проверь код и что вкладка с комнатой открыта.' : 'Ошибка сети: ' + e.type);
   });
 }
 

@@ -1,4 +1,4 @@
-import { ACTS, ATTACKS } from './fighter.js?v=3';
+import { ACTS, ATTACKS } from './fighter.js?v=4';
 
 const LEVELS = {
   easy: { react: 0.28, defend: 0.25, aggr: 0.9, combo: 0.15 },
