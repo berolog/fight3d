@@ -48,5 +48,6 @@ export class Sfx {
   swoosh(k) { this._noise(k >= 2 ? 0.22 : 0.13, 'bandpass', 600, 2500, k >= 2 ? 0.35 : 0.22, 2); }
   ko() { this._tone(1.2, 90, 30, 1.0); this._noise(0.6, 'lowpass', 800, 60, 0.6); }
   superCharge() { this._tone(0.5, 200, 900, 0.3, 'sawtooth'); this._noise(0.5, 'bandpass', 400, 3000, 0.4, 2); }
+  rope() { this._tone(0.25, 140, 70, 0.4, 'triangle'); this._noise(0.15, 'lowpass', 600, 100, 0.3); }
   bell() { this._tone(0.9, 1320, 1300, 0.25, 'triangle'); this._tone(0.9, 660, 655, 0.2); }
 }

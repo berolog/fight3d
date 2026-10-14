@@ -1,8 +1,8 @@
 import * as THREE from 'three';
-import { Fighter, RING_R, RING_H } from './fighter.js?v=7';
-import { Game } from './game.js?v=7';
-import { AI } from './ai.js?v=7';
-import { Sfx } from './audio.js?v=7';
+import { Fighter, RING_R, RING_H } from './fighter.js?v=8';
+import { Game } from './game.js?v=8';
+import { AI } from './ai.js?v=8';
+import { Sfx } from './audio.js?v=8';
 
 // ---------------------------------------------------------------------------
 // Scene
@@ -38,7 +38,7 @@ function floorTexture(rep, a = '#c9c2b4', b = '#bdb5a6') {
   t.anisotropy = 8; t.colorSpace = THREE.SRGBColorSpace;
   return t;
 }
-// Raised round ring: knock the opponent off its edge to win the round.
+// Raised round ring closed by ropes.
 const floor = new THREE.Mesh(new THREE.PlaneGeometry(80, 80), new THREE.MeshStandardMaterial({ map: floorTexture(40, '#8f9a87', '#86917e'), roughness: 0.95 }));
 floor.rotation.x = -Math.PI / 2; floor.position.y = -RING_H; floor.receiveShadow = true; scene.add(floor);
 const plat = new THREE.Mesh(new THREE.CylinderGeometry(RING_R + 0.2, RING_R + 0.35, RING_H, 72), new THREE.MeshStandardMaterial({ color: 0x3b4250, roughness: 0.8 }));
@@ -47,6 +47,23 @@ const top = new THREE.Mesh(new THREE.CircleGeometry(RING_R + 0.2, 72), new THREE
 top.rotation.x = -Math.PI / 2; top.position.y = 0.001; top.receiveShadow = true; scene.add(top);
 const edge = new THREE.Mesh(new THREE.RingGeometry(RING_R - 0.12, RING_R + 0.2, 72), new THREE.MeshBasicMaterial({ color: 0xd8403a }));
 edge.rotation.x = -Math.PI / 2; edge.position.y = 0.004; scene.add(edge);
+const ropes = [];
+{
+  const postMat = new THREE.MeshStandardMaterial({ color: 0xdedede, roughness: 0.4, metalness: 0.3 });
+  const ropeMat = new THREE.MeshStandardMaterial({ color: 0xc8302c, roughness: 0.5 });
+  const RR = RING_R + 0.05;
+  for (let i = 0; i < 8; i++) {
+    const a = i / 8 * Math.PI * 2;
+    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.07, 1.45, 10), postMat);
+    post.position.set(Math.sin(a) * RR, 0.72, Math.cos(a) * RR); post.castShadow = true; scene.add(post);
+  }
+  for (const y of [0.5, 0.85, 1.2]) {
+    const rope = new THREE.Mesh(new THREE.TorusGeometry(RR, 0.025, 6, 96), ropeMat);
+    rope.rotation.x = Math.PI / 2; rope.position.y = y; rope.castShadow = true;
+    scene.add(rope); ropes.push(rope);
+  }
+}
+let ropeShake = 0;
 
 const fighters = [new Fighter(scene, 0xd63c3c, 'p1'), new Fighter(scene, 0x2f6ee0, 'p2')];
 const game = new Game(fighters);
@@ -101,7 +118,7 @@ function handleEvents(evs) {
     else if (e.t === 'sw') sfx.swoosh(e.k);
     else if (e.t === 'ko') { sfx.ko(); if (e.why !== 'time') replayPending = { wait: 26 }; }
     else if (e.t === 'sup') { sfx.superCharge(); flashText('СУПЕРУДАР!', 800); }
-    else if (e.t === 'out') { shake = 0.3; }
+    else if (e.t === 'rope') { ropeShake = Math.min(1, e.v / 5); sfx.rope(); }
     else if (e.t === 'go') sfx.bell();
   }
 }
@@ -611,6 +628,8 @@ function frame(now) {
   }
 
   updateFx(dt);
+  ropeShake = Math.max(0, ropeShake - dt * 2);
+  ropes.forEach((r, i) => { r.scale.setScalar(1 + Math.sin(performance.now() / 40 + i) * ropeShake * 0.015); });
   if (mode === 'menu' && replay) endReplay();
   if (mode === 'menu') {
     camera.position.set(Math.sin(menuT * 0.15) * 5.5, 2.4, Math.cos(menuT * 0.15) * 5.5);

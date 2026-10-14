@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { ACTS, RING_R } from './fighter.js?v=7';
+import { ACTS, RING_R } from './fighter.js?v=8';
 
 const START_X = 1.4;
 export const ROUND_TIME = 60;
@@ -74,19 +74,20 @@ export class Game {
     this.checkHit(b, a);
   }
 
-  // You can't walk off the ring, but a knockback can throw you out of it.
+  // Closed ring: the ropes stop you and bounce a knocked-back fighter back into the fight.
   ring(f) {
-    const s = f.st;
-    if (s.out) return;
+    const s = f.st, R = RING_R - 0.3;
     const r = Math.hypot(s.x, s.z);
-    if (r <= RING_R) return;
-    if (f.knocked && Math.hypot(s.kx, s.kz) > 0.6) {
-      s.out = 1; s.vy = 1.2;
-      if (s.act !== 'ko') f.startAct('ko');
-      this.endRound(1 - this.idx(f), 'out');
-      this.event({ t: 'out', i: this.idx(f) });
-    } else {
-      s.x *= RING_R / r; s.z *= RING_R / r;
+    if (r <= R) return;
+    const nx = s.x / r, nz = s.z / r;
+    s.x = nx * R; s.z = nz * R;
+    const vr = s.kx * nx + s.kz * nz; // knockback speed into the ropes
+    if (vr > 0) {
+      s.kx -= nx * vr * 1.6; s.kz -= nz * vr * 1.6;
+      if (vr > 1.5) {
+        s.lv[0] -= vr * 0.6; s.hv[0] += vr * 0.8;
+        this.event({ t: 'rope', i: this.idx(f), v: +vr.toFixed(1) });
+      }
     }
   }
 

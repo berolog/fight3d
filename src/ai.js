@@ -1,4 +1,4 @@
-import { ACTS, ATTACKS, RING_R } from './fighter.js?v=7';
+import { ACTS, ATTACKS, RING_R } from './fighter.js?v=8';
 
 const LEVELS = {
   easy: { react: 0.28, defend: 0.25, aggr: 0.9, combo: 0.15 },
@@ -71,7 +71,6 @@ export class AI {
     if (d < 1.12 && !me.busy && this.cool <= 0 && Math.random() < c.aggr * dt * 3) {
       let a;
       if (o.cr > 0.5) a = pick(['lk', 'rk']);
-      else if (opR > RING_R - 1.2) a = pick(['lk', 'lk', 'rk']); // push them off the edge
       else if (d > 1.0) a = pick(['lk', 'rk', 'rp']);
       else a = pick(['lp', 'lp', 'rp', 'rp', 'lk', 'rk', 'hl', 'hr']);
       inp.press[a] = 1;
@@ -94,8 +93,8 @@ export class AI {
       else if (r < 0.55) this.plan = { mf: -1, ms: 0 };
       else this.plan = { mf: 1, ms: 0 };
     }
-    // back to the edge: circle away from it instead of retreating
-    if (myR > RING_R - 0.9 && this.plan.mf < 0) this.plan = { mf: 0.5, ms: this.plan.ms || pick([1, -1]) };
+    // back on the ropes: circle away instead of retreating into them
+    if (myR > RING_R - 1.0 && this.plan.mf < 0) this.plan = { mf: 0.5, ms: this.plan.ms || pick([1, -1]) };
     inp.mf = this.plan.mf; inp.ms = this.plan.ms;
     return inp;
   }
